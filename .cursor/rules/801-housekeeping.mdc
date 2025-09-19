@@ -1,0 +1,21 @@
+---
+description: Automatically follow Routine Checklists; prompt user before major housekeeping if needed
+globs: **/*
+---
+
+# Housekeeping & Workflow Prompts
+
+<version>1.0.0</version>
+
+## Requirements
+- Before coding: run type-check, lint, tests when relevant.
+- After significant edits: update docs (PROJECT_TRACKING.md, CODE_AUDIT.md) and summarize.
+- Commit regularly with concise messages; prompt user if repo push is desired.
+- Periodically verify Chrome policy link in PHASE2_SPEC.md.
+- Ask for clarification on unclear specs (⭐) before implementing.
+- Ensure rules consistency with docs; do not ignore checklists.
+
+## Triggers
+- On starting a task: check ROUTINE_CHECKLISTS.md Pre-Coding Checklist.
+- Before commit: run Quality Assurance Checklist items.
+

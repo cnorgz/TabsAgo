@@ -1,0 +1,30 @@
+---
+description: Prefer Vitest for unit tests; test utils first; minimal snapshot usage
+globs: src/**/*.{ts,tsx}
+---
+
+# Testing Standards
+
+<version>1.0.0</version>
+
+## Context
+Small extension; prioritize fast, focused tests for utils and services.
+
+## Requirements
+- Use Vitest for unit tests (co-located `*.test.ts(x)` near source files).
+- Focus on pure modules first: `src/utils/*`, `src/services/*`.
+- Avoid heavy DOM tests for now; smoke test critical render paths later.
+- Do not mock Chrome APIs manually: isolate through services and test services with fakes.
+- Add at least one test for `historyClusters.ts` bucketing logic.
+
+## Examples
+<example>
+// src/utils/historyClusters.test.ts
+import { expect, test } from 'vitest'
+import { /* internal */ } from './historyClusters'
+
+test('getDayBucket buckets correctly', () => {
+  // arrange -> assert day buckets with fixed timestamps
+})
+</example>
+

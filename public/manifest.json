@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "TabsAGO",
+  "version": "0.1.0",
+  "description": "Organize multiple Chrome tabs into one manageable interface",
+  "action": {
+    "default_title": "TabsAGO",
+    "default_popup": "index.html"
+  },
+  "background": {
+    "service_worker": "src/service-worker.ts",
+    "type": "module"
+  },
+  "permissions": [
+    "storage",
+    "tabs",
+    "history",
+    "contextMenus"
+  ],
+  "commands": {
+    "capture-selected-tabs": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S",
+        "mac": "Command+Shift+S"
+      },
+      "description": "Send highlighted tabs to TabsAGO"
+    }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["index.html", "assets/*"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "icons": {}
+}
+
+

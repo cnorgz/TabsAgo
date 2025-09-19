@@ -1,0 +1,34 @@
+---
+description: Enforce React + Tailwind UI conventions; service boundaries; no chrome API in components
+globs: src/**/*.{ts,tsx}
+---
+
+# React UI & Architecture Conventions
+
+<version>1.0.0</version>
+
+## Context
+- Small Chrome extension with iterative feature growth
+- Must keep UI edits simple and predictable
+
+## Requirements
+- Components live under `src/components/<Feature>/<Name>.tsx`
+- UI uses Tailwind-like utility classes or shared classes in `src/views/index.css`. Avoid new global CSS files.
+- No inline styles for structural/layout; small one-off color/text allowed during prototyping only.
+- Never call Chrome APIs directly in React components. Use services in `src/services/*`.
+- Use constants from `src/constants/*` for keys/IDs; avoid magic strings.
+- Keep file headers/imports organized; default exports for components, named exports for types.
+- Prefer small, focused components. Lift shared logic into hooks in `src/hooks/`.
+
+## Examples
+<example>
+// GOOD: Component imports service and types only
+import { TabService } from '../../services/TabService'
+import { TabItem } from '../../types/Tab'
+</example>
+
+<example type="invalid">
+// BAD: Direct Chrome API access in components
+const tabs = await chrome.tabs.query({ currentWindow: true })
+</example>
+
