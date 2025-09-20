@@ -234,19 +234,19 @@ const TabManager: React.FC = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-          Captured Tabs ({tabs.length})
+          Grabbed Tabs ({tabs.length})
         </h2>
         <button
           onClick={captureCurrentTab}
           className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          Capture Current Tab
+          Grab Current Tab
         </button>
       </div>
       
       {tabs.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-gray-500">No tabs captured yet. Click "Capture Current Tab" to get started!</p>
+          <p className="text-gray-500">No tabs grabbed yet. Click "Grab Current Tab" to get started!</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -325,7 +325,7 @@ npm run build
 
 ✅ **Working Chrome Extension** that loads without errors  
 ✅ **Pinned Tab** that opens automatically on install  
-✅ **Basic Tab Capture** functionality  
+✅ **Basic Tab Grabbing** functionality  
 ✅ **Tab Storage** in chrome.storage.local  
 ✅ **Simple List View** of captured tabs  
 ✅ **Remove Tab** functionality  
@@ -334,7 +334,7 @@ npm run build
 ## 🚧 Next Steps After Quick Start
 
 1. **Test the extension** - Make sure it loads and creates the pinned tab
-2. **Capture some tabs** - Test the tab capture functionality
+2. **Grab some tabs** - Test the tab grabbing functionality
 3. **Update PROJECT_TRACKING.md** - Mark DEV-001 through DEV-004 as complete
 4. **Move to Phase 2** - Begin implementing advanced tab management features
 5. Use scripts: `npm run type-check && npm run lint && npm run test && npm run build`

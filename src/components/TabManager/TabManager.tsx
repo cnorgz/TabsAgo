@@ -62,7 +62,7 @@ const TabManager: React.FC = () => {
   return (
     <div>
       <div className="toolbar">
-        <h2 className="title">Captured Tabs ({tabs.length})</h2>
+        <h2 className="title">Grabbed Tabs ({tabs.length})</h2>
         <div className="toolbar-group">
           <button className="btn" onClick={captureAllTabsInWindow}>Grab Tabs</button>
           <select className="select" value={sortBy} onChange={(e) => setSortBy(e.target.value as 'capturedAtDesc' | 'domainAsc' | 'titleAsc')} aria-label="Sort">
