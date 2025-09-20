@@ -74,7 +74,7 @@ Related docs: PHASE2_SPEC.md (features/spec), ROUTINE_CHECKLISTS.md (workflow), 
   - [ ] Improve list cell layout and density
   - [ ] Better action affordances (Open/Remove)
   - [ ] Responsive behavior
-  - [x] Add Capture/Refresh (All Tabs) with de-dupe
+  - [x] Add Grab/Refresh (All Tabs) with de-dupe
 
 - [ ] **CORE-005**: Multi-Select & Open
   - [ ] Multi-select captured tabs
@@ -84,6 +84,8 @@ Related docs: PHASE2_SPEC.md (features/spec), ROUTINE_CHECKLISTS.md (workflow), 
 - [ ] **TG-001**: Tab Groups Integration
   - [x] Create/move/collapse groups via chrome.tabGroups
   - [x] Auto-group by domain (current window)
+
+> Caution: Further Tab Groups work is deferred and should remain last in the backlog. Do not add Tab Groups UI or additional UX until we revisit and approve a full plan.
 
 - [x] **HIST-001**: History Import (emulate Journeys)
   - [x] Use chrome.history.search to import recent
@@ -110,10 +112,10 @@ Related docs: PHASE2_SPEC.md (features/spec), ROUTINE_CHECKLISTS.md (workflow), 
   - [ ] Ensure UI provides clear Clear All and per-item removal
 
 - [ ] **UI-001**: Views & Themes (V1)
-  - [ ] Theme toggle; ⭐ follow system/browser (confirm)
+  - [ ] Theme toggle; follow system/browser by default with manual override (sun/moon icons)
   - [ ] TabsView: 10 per row; group by day with hint border
   - [ ] URL View: group/sort by domain
-  - [ ] Date View: order by last viewed/opened ⭐
+  - [ ] Date View: order by lastAccessed with fallback to capture time; add filter dropdown (Oldest→Latest / Latest→Oldest)
   - [ ] ** Snapshot View: thumbnail tiles
 
 - [ ] **SRCH-001**: Search
@@ -131,12 +133,12 @@ Related docs: PHASE2_SPEC.md (features/spec), ROUTINE_CHECKLISTS.md (workflow), 
   - [ ] Surface chrome.sessions.getRecentlyClosed
   - [ ] One-click restore
 
-- [ ] **SP-001**: Side Panel Surface
+- [ ] **SP-001**: Side Panel Surface (Deferred — do not implement in Phase 2)
   - [ ] Add side_panel.default_path
   - [ ] Toggle side panel from action
 
 **Definition of Done** (Phase 2):
-- Capture single/all tabs reliably with persisted storage
+- Grab single/all tabs reliably with persisted storage
 - Polished list UI with sorting + clear all
 - At least one additional integration working (tab groups OR history import)
 
@@ -355,16 +357,16 @@ Related docs: PHASE2_SPEC.md (features/spec), ROUTINE_CHECKLISTS.md (workflow), 
 
 ---
 
-## Current Sprint: Phase 1 - Foundation & Setup
+## Current Sprint: Phase 2 - Core Tab Management
 
 ### This Week's Goals:
-1. Set up development environment
-2. Create basic extension structure
-3. Implement pinned tab creation
-4. Establish project architecture
+1. List View polish toward Chrome History-style density and affordances; finalize "Grab" terminology in UI/docs
+2. Error notifications for failed grabs
+3. Data validation/migration guard for stored tab items
+4. Keyboard shortcuts + Help modal (link to chrome://extensions/shortcuts)
 
 ### Next Milestone:
-**Phase 1 Complete**: Extension loads without errors and creates pinned tab on install.
+Polished List View with sorting + clear all; stable grab + storage; shortcuts help surfaced.
 
 ### Blockers:
 - None currently identified
@@ -389,7 +391,7 @@ Related docs: PHASE2_SPEC.md (features/spec), ROUTINE_CHECKLISTS.md (workflow), 
 | Phase 7: Testing & QA | 🔴 Not Started | 0% | Depends on Phase 6 |
 | Phase 8: Documentation & Deploy | 🔴 Not Started | 0% | Depends on Phase 7 |
 
-**Overall Progress**: 0% (0/8 phases complete)
+**Overall Progress**: 12.5% (1/8 phases complete)
 
 ---
 

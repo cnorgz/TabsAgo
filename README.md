@@ -16,7 +16,7 @@ A Chrome extension to organize and manage multiple Chrome tabs into a single, or
 ## Features (Planned for v1.0)
 
 ### Core Functionality
-- [ ] **Tab Consolidation**: Capture and organize multiple tabs into one view
+- [ ] **Tab Consolidation**: Grab (capture) and organize multiple tabs into one view
 - [ ] **Multiple View Modes**: 
   - List View: Compact list with thumbnails and metadata
   - Grid View: Visual grid layout for easy scanning

@@ -5,6 +5,7 @@ export interface TabItem {
   favicon: string
   capturedAt: string
   domain: string
+  lastAccessed?: number
 }
 
 export interface TabGroup {

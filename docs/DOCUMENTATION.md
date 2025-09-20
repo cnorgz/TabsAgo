@@ -68,7 +68,7 @@ src/
 ```
 
 ### Data Flow
-1. **Tab Capture**: Service worker captures tab information
+1. **Tab Capture** (user-facing: Grab): Service worker captures tab information
 2. **Storage**: Tab data stored in chrome.storage.local
 3. **State Management**: React context manages application state
 4. **UI Updates**: Components react to state changes

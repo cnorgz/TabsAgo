@@ -139,6 +139,8 @@ body {
   border-radius: 12px;
 }
 .row-button:hover { background: #141519; }
+.row-button .icon-btn { opacity: 0; transition: opacity .15s ease; }
+.row-button:hover .icon-btn, .row-button:focus-within .icon-btn { opacity: 1; }
 .icon-btn {
   all: unset;
   cursor: pointer;

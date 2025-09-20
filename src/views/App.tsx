@@ -11,6 +11,13 @@ import { TabItem } from '../types/Tab'
 function App() {
   const [mode, setMode] = React.useState<'list' | 'tabs'>(() => (localStorage.getItem(STORAGE_KEYS.mode) as 'list' | 'tabs' | null) || 'list')
   const [items, setItems] = React.useState<TabItem[]>([])
+  const initialTheme = React.useMemo(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.theme)
+    if (saved === 'dark' || saved === 'light') return saved
+    const prefersDark = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+    return prefersDark ? 'dark' : 'light'
+  }, [])
+  const [theme, setTheme] = React.useState<string>(initialTheme)
 
   // Lightweight way to receive updates from TabManager: listen to storage
   React.useEffect(() => {
@@ -25,13 +32,17 @@ function App() {
   }, [])
 
   React.useEffect(() => { StorageService.set(STORAGE_KEYS.mode, mode) }, [mode])
+  React.useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    StorageService.set(STORAGE_KEYS.theme, theme)
+  }, [theme])
 
   return (
-    <div className="min-h-screen" data-theme={(localStorage.getItem(STORAGE_KEYS.theme)||'dark')}>
+    <div className="min-h-screen" data-theme={theme}>
       <div className="app-container">
         <div className="toolbar mb-2">
           <h1 className="app-title">TabsAGO</h1>
-          <ThemeToggle />
+          <ThemeToggle theme={theme} setTheme={setTheme} />
         </div>
         <ErrorBoundary>
           <div className="tabs-toolbar">
@@ -53,16 +64,12 @@ function App() {
   )
 }
 
-function ThemeToggle() {
-  const [theme, setTheme] = React.useState<string>(() => (localStorage.getItem(STORAGE_KEYS.theme) || 'dark'))
-  React.useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme)
-    StorageService.set(STORAGE_KEYS.theme, theme)
-  }, [theme])
+function ThemeToggle({ theme, setTheme }: { theme: string; setTheme: (t: 'dark'|'light') => void }) {
+  const isDark = theme === 'dark'
   return (
     <div className="tabs-toolbar">
-      <button className="toggle" onClick={() => setTheme(theme==='dark'?'light':'dark')}>
-        {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+      <button className="toggle" aria-label="Toggle theme" onClick={() => setTheme(isDark ? 'light' : 'dark')}>
+        {isDark ? '☀️' : '🌙'}
       </button>
     </div>
   )

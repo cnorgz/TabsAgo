@@ -16,6 +16,7 @@ function mapChromeTabToTabItem(t: chrome.tabs.Tab): TabItem | null {
     favicon: t.favIconUrl || '',
     capturedAt: new Date().toISOString(),
     domain,
+    lastAccessed: typeof t.lastAccessed === 'number' ? t.lastAccessed : undefined,
   }
 }
 

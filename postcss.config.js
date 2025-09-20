@@ -1,7 +1,8 @@
-import tailwind from '@tailwindcss/postcss'
-import autoprefixer from 'autoprefixer'
+// Converted to CommonJS to avoid ESM import error during Vite build
+const tailwind = require('@tailwindcss/postcss')
+const autoprefixer = require('autoprefixer')
 
-export default {
+module.exports = {
   plugins: [tailwind, autoprefixer]
 }
 

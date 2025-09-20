@@ -8,8 +8,10 @@ import { TabItem } from '../../types/Tab'
 const TabManager: React.FC = () => {
   const { value: storedTabs, setValue: setStoredTabs } = useChromeStorage<TabItem[]>(STORAGE_KEYS.tabs, [])
   const [loading, setLoading] = useState<boolean>(true)
-  const [sortBy, setSortBy] = useState<'capturedAtDesc' | 'domainAsc' | 'titleAsc'>(() => {
-    const saved = localStorage.getItem('tabsago_sort') as 'capturedAtDesc' | 'domainAsc' | 'titleAsc' | null
+  const [error, setError] = useState<string | null>(null)
+  const [search, setSearch] = useState<string>('')
+  const [sortBy, setSortBy] = useState<'capturedAtDesc' | 'domainAsc' | 'titleAsc' | 'lastAccessedAsc' | 'lastAccessedDesc'>(() => {
+    const saved = localStorage.getItem('tabsago_sort') as 'capturedAtDesc' | 'domainAsc' | 'titleAsc' | 'lastAccessedAsc' | 'lastAccessedDesc' | null
     return saved ?? 'capturedAtDesc'
   })
   useEffect(() => {
@@ -22,24 +24,42 @@ const TabManager: React.FC = () => {
   }, [])
 
   const tabs = useMemo(() => {
-    const copy = [...storedTabs]
+    const normalizedQuery = search.trim().toLowerCase()
+    const filtered = normalizedQuery
+      ? storedTabs.filter(t =>
+          (t.title?.toLowerCase() || '').includes(normalizedQuery) ||
+          (t.url?.toLowerCase() || '').includes(normalizedQuery)
+        )
+      : storedTabs
+    const copy = [...filtered]
+    const getLastAccessed = (t: TabItem) => (typeof t.lastAccessed === 'number' ? t.lastAccessed : new Date(t.capturedAt).getTime())
     switch (sortBy) {
       case 'domainAsc':
         return copy.sort((a, b) => a.domain.localeCompare(b.domain) || a.title.localeCompare(b.title))
       case 'titleAsc':
         return copy.sort((a, b) => a.title.localeCompare(b.title))
+      case 'lastAccessedAsc':
+        return copy.sort((a, b) => getLastAccessed(a) - getLastAccessed(b))
+      case 'lastAccessedDesc':
+        return copy.sort((a, b) => getLastAccessed(b) - getLastAccessed(a))
       case 'capturedAtDesc':
       default:
         return copy.sort((a, b) => new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime())
     }
-  }, [storedTabs, sortBy])
+  }, [storedTabs, sortBy, search])
 
   // Removed single-tab capture per product decision
 
   const captureAllTabsInWindow = async () => {
-    const mapped = await TabService.captureCurrentWindowTabs({ onlyHighlightedIfAny: false })
-    const merged = await TabService.appendCapturedTabs(mapped)
-    await setStoredTabs(merged)
+    try {
+      const mapped = await TabService.captureCurrentWindowTabs({ onlyHighlightedIfAny: false })
+      const merged = await TabService.appendCapturedTabs(mapped)
+      await setStoredTabs(merged)
+      setError(null)
+    } catch {
+      setError('Failed to grab tabs. Please try again.')
+      setTimeout(() => setError(null), 3000)
+    }
   }
 
   const removeTab = async (id: string) => {
@@ -61,21 +81,45 @@ const TabManager: React.FC = () => {
 
   return (
     <div>
+      {error && (
+        <div role="alert" style={{
+          marginBottom: 8,
+          padding: '8px 12px',
+          borderRadius: 8,
+          border: '1px solid var(--border)',
+          background: 'rgba(248,113,113,0.10)',
+          color: '#fca5a5'
+        }}>{error}</div>
+      )}
       <div className="toolbar">
         <h2 className="title">Grabbed Tabs ({tabs.length})</h2>
         <div className="toolbar-group">
           <button className="btn" onClick={captureAllTabsInWindow}>Grab Tabs</button>
-          <select className="select" value={sortBy} onChange={(e) => setSortBy(e.target.value as 'capturedAtDesc' | 'domainAsc' | 'titleAsc')} aria-label="Sort">
-            <option value="capturedAtDesc">Newest</option>
-            <option value="titleAsc">Title A-Z</option>
-            <option value="domainAsc">Domain A-Z</option>
+          <input
+            className="select"
+            type="text"
+            placeholder="Search tabs"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search"
+          />
+          <select
+            className="select"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as 'capturedAtDesc' | 'domainAsc' | 'titleAsc' | 'lastAccessedAsc' | 'lastAccessedDesc')}
+            aria-label="Sort"
+          >
+            <option value="lastAccessedDesc">Latest → Oldest</option>
+            <option value="lastAccessedAsc">Oldest → Latest</option>
+            <option value="titleAsc">Title A–Z</option>
+            <option value="domainAsc">Domain A–Z</option>
           </select>
           <button className="btn" onClick={clearAll}>Clear All</button>
         </div>
       </div>
 
       {tabs.length === 0 ? (
-        <div className="muted-text" style={{textAlign:'center', padding:'48px 0'}}>No tabs captured yet. Click &quot;Capture/Refresh (All Tabs)&quot; to get started.</div>
+        <div className="muted-text" style={{textAlign:'center', padding:'48px 0'}}>No tabs yet. Click “Grab Tabs” to start.</div>
       ) : (
         <ul className="list">
           {tabs.map(tab => (
