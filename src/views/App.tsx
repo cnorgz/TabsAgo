@@ -1,7 +1,7 @@
 import React from 'react'
 
 import { ErrorBoundary } from '../components/Common/ErrorBoundary'
-import Grouped from '../components/Grouped/Grouped'
+// Grouped history view removed from scope
 import TabManager from '../components/TabManager/TabManager'
 import TabsView from '../components/ViewModes/TabsView'
 import { STORAGE_KEYS } from '../constants/storage'
@@ -47,7 +47,6 @@ function App() {
               chrome.storage.local.set({ [STORAGE_KEYS.tabs]: updated })
             }} />
           )}
-          <Grouped />
         </ErrorBoundary>
       </div>
     </div>

@@ -89,6 +89,25 @@ Related docs: PHASE2_SPEC.md (features/spec), ROUTINE_CHECKLISTS.md (workflow), 
   - [x] Use chrome.history.search to import recent
   - [x] Group by day buckets (Today/Yesterday/This Week)
   - [x] Keyword clusters (heuristic using SERP + referringVisitId)
+  - [x] Removed from product scope (cleanup complete)
+- [ ] **ASSETS-001**: Icons for Store Submission
+  - [ ] Provide 16/48/128px icons and update manifest
+
+- [ ] **LEGAL-001**: Privacy Policy & In-App Disclosure
+  - [ ] Add PRIVACY.md and link in About/Privacy view
+  - [ ] Disclose local data handling; no network transfer
+
+- [ ] **HELP-001**: Shortcuts & Help Modal
+  - [ ] List shortcuts and link to chrome://extensions/shortcuts
+  - [ ] Include hotkeys reminder per (?) info section
+
+- [ ] **PERMS-OPT-001**: Optionalize History (Toggle)
+  - [ ] Settings toggle to enable history features (optional permission request)
+  - [ ] Gate features until permission granted
+
+- [ ] **RET-001**: Data Retention & Controls
+  - [ ] Document retention practices in docs
+  - [ ] Ensure UI provides clear Clear All and per-item removal
 
 - [ ] **UI-001**: Views & Themes (V1)
   - [ ] Theme toggle; ⭐ follow system/browser (confirm)
