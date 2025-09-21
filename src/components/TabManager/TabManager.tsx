@@ -1,75 +1,44 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React from 'react'
 
-import { STORAGE_KEYS } from '../../constants/storage'
-import { useChromeStorage } from '../../hooks/useChromeStorage'
-import { TabService } from '../../services/TabService'
 import { TabItem } from '../../types/Tab'
 
-const TabManager: React.FC = () => {
-  const { value: storedTabs, setValue: setStoredTabs } = useChromeStorage<TabItem[]>(STORAGE_KEYS.tabs, [])
-  const [loading, setLoading] = useState<boolean>(true)
-  const [error, setError] = useState<string | null>(null)
-  const [search, setSearch] = useState<string>('')
-  const [sortBy, setSortBy] = useState<'capturedAtDesc' | 'domainAsc' | 'titleAsc' | 'lastAccessedAsc' | 'lastAccessedDesc'>(() => {
-    const saved = localStorage.getItem('tabsago_sort') as 'capturedAtDesc' | 'domainAsc' | 'titleAsc' | 'lastAccessedAsc' | 'lastAccessedDesc' | null
-    return saved ?? 'capturedAtDesc'
-  })
-  useEffect(() => {
-    localStorage.setItem('tabsago_sort', sortBy)
-  }, [sortBy])
+interface TabManagerProps {
+  tabs: TabItem[]
+  loading: boolean
+  error: string | null
+  search: string
+  setSearch: (search: string) => void
+  sortBy: 'capturedAtDesc' | 'domainAsc' | 'titleAsc' | 'lastAccessedAsc' | 'lastAccessedDesc'
+  setSortBy: (sortBy: 'capturedAtDesc' | 'domainAsc' | 'titleAsc' | 'lastAccessedAsc' | 'lastAccessedDesc') => void
+  captureAllTabsInWindow: () => Promise<void>
+  removeTab: (id: string) => Promise<void>
+  openTab: (id: string) => void
+  handleSelect: (id: string, checked: boolean) => void
+  handleSelectAll: () => void
+  selected: Set<string>
+  bulkOpen: () => void
+  bulkRemove: () => Promise<void>
+  clearAll: () => Promise<void>
+}
 
-  useEffect(() => {
-    // initial load handled by hook state
-    setLoading(false)
-  }, [])
-
-  const tabs = useMemo(() => {
-    const normalizedQuery = search.trim().toLowerCase()
-    const filtered = normalizedQuery
-      ? storedTabs.filter(t =>
-          (t.title?.toLowerCase() || '').includes(normalizedQuery) ||
-          (t.url?.toLowerCase() || '').includes(normalizedQuery)
-        )
-      : storedTabs
-    const copy = [...filtered]
-    const getLastAccessed = (t: TabItem) => (typeof t.lastAccessed === 'number' ? t.lastAccessed : new Date(t.capturedAt).getTime())
-    switch (sortBy) {
-      case 'domainAsc':
-        return copy.sort((a, b) => a.domain.localeCompare(b.domain) || a.title.localeCompare(b.title))
-      case 'titleAsc':
-        return copy.sort((a, b) => a.title.localeCompare(b.title))
-      case 'lastAccessedAsc':
-        return copy.sort((a, b) => getLastAccessed(a) - getLastAccessed(b))
-      case 'lastAccessedDesc':
-        return copy.sort((a, b) => getLastAccessed(b) - getLastAccessed(a))
-      case 'capturedAtDesc':
-      default:
-        return copy.sort((a, b) => new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime())
-    }
-  }, [storedTabs, sortBy, search])
-
-  // Removed single-tab capture per product decision
-
-  const captureAllTabsInWindow = async () => {
-    try {
-      const mapped = await TabService.captureCurrentWindowTabs({ onlyHighlightedIfAny: false })
-      const merged = await TabService.appendCapturedTabs(mapped)
-      await setStoredTabs(merged)
-      setError(null)
-    } catch {
-      setError('Failed to grab tabs. Please try again.')
-      setTimeout(() => setError(null), 3000)
-    }
-  }
-
-  const removeTab = async (id: string) => {
-    const updated = storedTabs.filter(t => t.id !== id)
-    await setStoredTabs(updated)
-  }
-
-  const clearAll = async () => {
-    await setStoredTabs([])
-  }
+const TabManager: React.FC<TabManagerProps> = ({
+  tabs,
+  loading,
+  error,
+  search,
+  setSearch,
+  sortBy,
+  setSortBy,
+  captureAllTabsInWindow,
+  removeTab,
+  openTab,
+  handleSelect,
+  handleSelectAll,
+  selected,
+  bulkOpen,
+  bulkRemove,
+  clearAll
+}) => {
 
   if (loading) {
     return (
@@ -118,19 +87,46 @@ const TabManager: React.FC = () => {
         </div>
       </div>
 
+      {selected.size > 0 && (
+        <div className="toolbar" style={{marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)'}}>
+          <div className="title">Selected {selected.size} tab{selected.size > 1 ? 's' : ''}</div>
+          <div className="toolbar-group">
+            <button className="btn" onClick={bulkOpen}>Open All</button>
+            <button className="btn" onClick={bulkRemove} style={{background: 'rgba(248,113,113,0.15)', borderColor: '#f87171'}}>Remove Selected</button>
+          </div>
+        </div>
+      )}
+
       {tabs.length === 0 ? (
-        <div className="muted-text" style={{textAlign:'center', padding:'48px 0'}}>No tabs yet. Click “Grab Tabs” to start.</div>
+        <div className="muted-text" style={{textAlign:'center', padding:'48px 0'}}>No tabs yet. Click &quot;Grab Tabs&quot; to start.</div>
       ) : (
         <ul className="list">
+          <li style={{display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0'}}>
+            <input
+              type="checkbox"
+              checked={selected.size === tabs.length}
+              onChange={handleSelectAll}
+              aria-label="Select all tabs"
+            />
+            <div className="row-button" style={{cursor: 'pointer', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', flex: 1, display: 'flex', alignItems: 'center'}}>
+              <span style={{fontWeight: 'bold', color: 'var(--accent)'}}>Select All</span>
+            </div>
+          </li>
           {tabs.map(tab => (
-            <li key={tab.id}>
-              <div className="row-button" onClick={() => window.open(tab.url, '_blank', 'noopener,noreferrer')}> 
+            <li key={tab.id} style={{display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0'}}>
+              <input
+                type="checkbox"
+                checked={selected.has(tab.id)}
+                onChange={(e) => handleSelect(tab.id, e.target.checked)}
+                aria-label={`Select ${tab.title}`}
+              />
+              <div className="row-button" onClick={() => openTab(tab.id)} style={{flex: 1, display: 'flex', alignItems: 'center', gap: '12px'}}>
                 {tab.favicon ? (
                   <img src={tab.favicon} alt="" className="favicon" />
                 ) : (
                   <div className="favicon" />
                 )}
-                <div className="min-w-0">
+                <div className="min-w-0" style={{flex: 1}}>
                   <div className="title" title={tab.title}>{tab.title}</div>
                   <div className="domain">{tab.domain}</div>
                 </div>
