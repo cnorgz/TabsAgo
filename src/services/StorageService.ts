@@ -14,6 +14,10 @@ export const StorageService = {
     await chrome.storage[area].set({ [key]: value })
   },
 
+  async remove(key: StorageKey, area: ChromeStorageArea = 'local'): Promise<void> {
+    await chrome.storage[area].remove(key)
+  },
+
   async update<T extends object>(key: StorageKey, updater: (curr: T | undefined) => T, area: ChromeStorageArea = 'local'): Promise<T> {
     const current = await this.get<T>(key, area)
     const next = updater(current)

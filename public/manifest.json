@@ -14,7 +14,12 @@
   "permissions": [
     "storage",
     "tabs",
-    "contextMenus"
+    "contextMenus",
+    "sessions",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "<all_urls>"
   ],
   "commands": {
     "capture-selected-tabs": {

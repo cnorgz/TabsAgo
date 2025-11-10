@@ -8,6 +8,10 @@ import { STORAGE_KEYS } from '../constants/storage'
 import { useChromeStorage } from '../hooks/useChromeStorage'
 import { TabService } from '../services/TabService'
 import { StorageService } from '../services/StorageService'
+import { ExportService } from '../services/ExportService'
+import { SessionSafetyService } from '../services/SessionSafetyService'
+import { RecentlyClosedService, RecentlyClosedSession } from '../services/RecentlyClosedService'
+import { ThumbnailService } from '../services/ThumbnailService'
 import { TabItem } from '../types/Tab'
 
 function App() {
@@ -31,15 +35,60 @@ function App() {
     const saved = localStorage.getItem('tabsago_sort') as 'capturedAtDesc' | 'domainAsc' | 'titleAsc' | 'lastAccessedAsc' | 'lastAccessedDesc' | null
     return saved ?? 'capturedAtDesc'
   })
+  const [lifeboatTabs, setLifeboatTabs] = useState<TabItem[]>([])
+  const [showLifeboat, setShowLifeboat] = useState<boolean>(false)
+  const [recentlyClosed, setRecentlyClosed] = useState<RecentlyClosedSession[]>([])
+  const [showRecentlyClosed, setShowRecentlyClosed] = useState<boolean>(true)
+  
+  // Thumbnail state
+  const [thumbnailsEnabled, setThumbnailsEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem('tabsago_thumbnails_enabled')
+    return saved === null ? true : saved === 'true'
+  })
+  const [thumbnailQuality, setThumbnailQuality] = useState<number>(() => {
+    const saved = localStorage.getItem('tabsago_thumbnail_quality')
+    return saved ? parseInt(saved, 10) : 70
+  })
+  const [capturingThumbnails, setCapturingThumbnails] = useState<boolean>(false)
+  const [captureProgress, setCaptureProgress] = useState<string>('')
 
   // Persist sort preference
   useEffect(() => {
     localStorage.setItem('tabsago_sort', sortBy)
   }, [sortBy])
+  
+  // Persist thumbnail preferences
+  useEffect(() => {
+    localStorage.setItem('tabsago_thumbnails_enabled', String(thumbnailsEnabled))
+  }, [thumbnailsEnabled])
+  
+  useEffect(() => {
+    localStorage.setItem('tabsago_thumbnail_quality', String(thumbnailQuality))
+  }, [thumbnailQuality])
 
   // Handle initial load
   useEffect(() => {
-    setLoading(false)
+    const setupServices = async () => {
+      // Setup session safety service
+      SessionSafetyService.setup()
+
+      // Check for lifeboat tabs
+      const [shouldShow, lifeboat] = await Promise.all([
+        SessionSafetyService.shouldShowLifeboat(),
+        SessionSafetyService.getLifeboatTabs()
+      ])
+
+      setShowLifeboat(shouldShow)
+      setLifeboatTabs(lifeboat)
+
+      // Load recently closed sessions
+      const recent = await RecentlyClosedService.getRecentlyClosed()
+      setRecentlyClosed(recent)
+
+      setLoading(false)
+    }
+
+    setupServices()
   }, [])
 
   // Centralized tab operations
@@ -51,6 +100,20 @@ function App() {
       setError(null)
     } catch {
       setError('Failed to grab tabs. Please try again.')
+      setTimeout(() => setError(null), 3000)
+    }
+  }
+
+  const captureCurrentTab = async () => {
+    try {
+      const tab = await TabService.captureActiveTab()
+      if (tab) {
+        const merged = await TabService.appendCapturedTabs([tab])
+        await setStoredTabs(merged)
+        setError(null)
+      }
+    } catch {
+      setError('Failed to capture current tab.')
       setTimeout(() => setError(null), 3000)
     }
   }
@@ -99,6 +162,132 @@ function App() {
     setSelected(new Set())
   }
 
+  const exportTabs = async () => {
+    try {
+      await ExportService.downloadBookmarksHTML(tabs)
+      setError(null)
+    } catch {
+      setError('Failed to export tabs. Please try again.')
+      setTimeout(() => setError(null), 3000)
+    }
+  }
+
+  const importTabs = async () => {
+    try {
+      const importedTabs = await ExportService.importFromBookmarksHTML()
+      if (importedTabs.length === 0) {
+        setError('No tabs found in the selected file.')
+        setTimeout(() => setError(null), 3000)
+        return
+      }
+      
+      // Merge imported tabs with existing tabs (avoiding duplicates by URL)
+      const merged = await TabService.appendCapturedTabs(importedTabs)
+      await setStoredTabs(merged)
+      setError(null)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to import tabs. Please try again.'
+      if (!errorMessage.includes('cancelled')) {
+        setError(errorMessage)
+        setTimeout(() => setError(null), 3000)
+      }
+    }
+  }
+
+  // Thumbnail operations
+  const captureThumbnailsNow = async () => {
+    if (capturingThumbnails) return
+    
+    setCapturingThumbnails(true)
+    setCaptureProgress('Starting capture...')
+    
+    try {
+      const stats = await ThumbnailService.captureAllTabsInWindow(
+        (current, total) => {
+          setCaptureProgress(`Capturing ${current} of ${total} tabs...`)
+        },
+        thumbnailQuality
+      )
+      
+      setCaptureProgress(
+        `Complete! ${stats.success} captured, ${stats.failed} failed, ${stats.skipped} skipped.`
+      )
+      
+      setTimeout(() => {
+        setCapturingThumbnails(false)
+        setCaptureProgress('')
+      }, 3000)
+    } catch (err) {
+      console.error('Failed to capture thumbnails:', err)
+      setError('Failed to capture thumbnails.')
+      setTimeout(() => setError(null), 3000)
+      setCapturingThumbnails(false)
+      setCaptureProgress('')
+    }
+  }
+
+  const clearThumbnailCache = async () => {
+    try {
+      await ThumbnailService.clearAllThumbnails()
+      setError('Thumbnail cache cleared successfully.')
+      setTimeout(() => setError(null), 2000)
+    } catch (err) {
+      console.error('Failed to clear thumbnail cache:', err)
+      setError('Failed to clear thumbnail cache.')
+      setTimeout(() => setError(null), 3000)
+    }
+  }
+
+
+  const restoreLifeboat = async () => {
+    try {
+      await SessionSafetyService.restoreLifeboatToMain()
+      const updated = await StorageService.get<TabItem[]>(STORAGE_KEYS.tabs)
+      await setStoredTabs(updated || [])
+      setShowLifeboat(false)
+      setLifeboatTabs([])
+      setError(null)
+    } catch {
+      setError('Failed to restore lifeboat tabs. Please try again.')
+      setTimeout(() => setError(null), 3000)
+    }
+  }
+
+  const clearLifeboat = async () => {
+    try {
+      await SessionSafetyService.clearLifeboat()
+      setShowLifeboat(false)
+      setLifeboatTabs([])
+      setError(null)
+    } catch {
+      setError('Failed to clear lifeboat tabs. Please try again.')
+      setTimeout(() => setError(null), 3000)
+    }
+  }
+
+  const restoreRecentlyClosed = async (session: RecentlyClosedSession) => {
+    try {
+      await RecentlyClosedService.restoreSession(session)
+      // Remove from recently closed list
+      setRecentlyClosed(prev => prev.filter(s => s.id !== session.id))
+      setError(null)
+    } catch {
+      setError('Failed to restore recently closed item. Please try again.')
+      setTimeout(() => setError(null), 3000)
+    }
+  }
+
+  const refreshRecentlyClosed = async () => {
+    try {
+      const recent = await RecentlyClosedService.getRecentlyClosed()
+      setRecentlyClosed(recent)
+      setError(null)
+    } catch {
+      setError('Failed to refresh recently closed items. Please try again.')
+      setTimeout(() => setError(null), 3000)
+    }
+  }
+
   // Centralized filtering and sorting
   const tabs = useMemo(() => {
     const normalizedQuery = search.trim().toLowerCase()
@@ -132,17 +321,108 @@ function App() {
     StorageService.set(STORAGE_KEYS.theme, theme)
   }, [theme])
 
+  const openAsPinnedTab = () => {
+    const extensionId = chrome.runtime.id
+    const extensionUrl = `chrome-extension://${extensionId}/index.html`
+    
+    chrome.tabs.query({}, (allTabs) => {
+      const existingTab = allTabs.find(tab => tab.url === extensionUrl)
+      
+      if (existingTab) {
+        // Tab exists, make it pinned and focus it
+        chrome.tabs.update(existingTab.id!, { pinned: true, active: true })
+      } else {
+        // Create new pinned tab
+        chrome.tabs.create({ url: extensionUrl, pinned: true })
+      }
+    })
+  }
+
   return (
     <div className="min-h-screen" data-theme={theme}>
       <div className="app-container">
         <div className="toolbar mb-2">
           <h1 className="app-title">TabsAGO</h1>
           <div className="toolbar-group">
-            <HelpModal />
+            <button 
+              className="toggle" 
+              onClick={openAsPinnedTab}
+              title="Open as pinned tab"
+              aria-label="Pin this tab"
+            >
+              📌
+            </button>
+            <HelpModal 
+              thumbnailsEnabled={thumbnailsEnabled}
+              setThumbnailsEnabled={setThumbnailsEnabled}
+              thumbnailQuality={thumbnailQuality}
+              setThumbnailQuality={setThumbnailQuality}
+              captureThumbnailsNow={captureThumbnailsNow}
+              clearThumbnailCache={clearThumbnailCache}
+              capturingThumbnails={capturingThumbnails}
+              captureProgress={captureProgress}
+            />
             <ThemeToggle theme={theme} setTheme={setTheme} />
           </div>
         </div>
         <ErrorBoundary>
+          {showLifeboat && lifeboatTabs.length > 0 && (
+            <div className="lifeboat-section" style={{
+              marginBottom: '16px',
+              padding: '12px',
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border)',
+              borderRadius: '8px'
+            }}>
+              <div className="toolbar">
+                <h3 className="title" style={{margin: 0}}>🔗 Last Session ({lifeboatTabs.length} tabs)</h3>
+                <div className="toolbar-group">
+                  <button className="btn" onClick={restoreLifeboat} title="Restore all lifeboat tabs">Restore All</button>
+                  <button className="btn" onClick={clearLifeboat} style={{background: 'rgba(248,113,113,0.15)', borderColor: '#f87171'}} title="Clear lifeboat tabs">Clear</button>
+                </div>
+              </div>
+              <div className="lifeboat-tabs" style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '8px',
+                marginTop: '8px'
+              }}>
+                {lifeboatTabs.slice(0, 6).map(tab => (
+                  <div key={tab.id} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '6px 8px',
+                    background: 'var(--panel)',
+                    borderRadius: '4px',
+                    border: '1px solid var(--border)',
+                    fontSize: '12px',
+                    maxWidth: '200px'
+                  }}>
+                    {tab.favicon && (
+                      <img src={tab.favicon} alt="" style={{width: '16px', height: '16px'}} />
+                    )}
+                    <span style={{
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}>
+                      {tab.title}
+                    </span>
+                  </div>
+                ))}
+                {lifeboatTabs.length > 6 && (
+                  <div style={{
+                    padding: '6px 8px',
+                    fontSize: '12px',
+                    color: 'var(--muted)'
+                  }}>
+                    +{lifeboatTabs.length - 6} more
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           <div className="tabs-toolbar">
             <button className={`toggle ${mode==='list'?'active':''}`} onClick={() => setMode('list')}>List</button>
             <button className={`toggle ${mode==='tabs'?'active':''}`} onClick={() => setMode('tabs')}>Tabs</button>
@@ -157,6 +437,7 @@ function App() {
               sortBy={sortBy}
               setSortBy={setSortBy}
               captureAllTabsInWindow={captureAllTabsInWindow}
+              captureCurrentTab={captureCurrentTab}
               removeTab={removeTab}
               openTab={openTab}
               handleSelect={handleSelect}
@@ -165,6 +446,8 @@ function App() {
               bulkOpen={bulkOpen}
               bulkRemove={bulkRemove}
               clearAll={clearAll}
+              exportTabs={exportTabs}
+              importTabs={importTabs}
             />
           ) : (
             <TabsView
@@ -176,6 +459,7 @@ function App() {
               sortBy={sortBy}
               setSortBy={setSortBy}
               captureAllTabsInWindow={captureAllTabsInWindow}
+              captureCurrentTab={captureCurrentTab}
               removeTab={removeTab}
               openTab={openTab}
               handleSelect={handleSelect}
@@ -184,7 +468,72 @@ function App() {
               bulkOpen={bulkOpen}
               bulkRemove={bulkRemove}
               clearAll={clearAll}
+              exportTabs={exportTabs}
+              importTabs={importTabs}
             />
+          )}
+          {showRecentlyClosed && recentlyClosed.length > 0 && (
+            <div className="recently-closed-section" style={{
+              marginTop: '16px',
+              padding: '12px',
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border)',
+              borderRadius: '8px'
+            }}>
+              <div className="toolbar">
+                <h3 className="title" style={{margin: 0}}>🕒 Recently Closed ({recentlyClosed.length})</h3>
+                <div className="toolbar-group">
+                  <button className="btn" onClick={refreshRecentlyClosed} title="Refresh recently closed items">🔄</button>
+                  <button className="btn" onClick={() => setShowRecentlyClosed(false)} style={{background: 'rgba(248,113,113,0.15)', borderColor: '#f87171'}} title="Hide recently closed">✕</button>
+                </div>
+              </div>
+              <div className="recently-closed-list" style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                marginTop: '8px'
+              }}>
+                {recentlyClosed.slice(0, 5).map(session => (
+                  <div key={session.id} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px',
+                    background: 'var(--panel)',
+                    borderRadius: '4px',
+                    border: '1px solid var(--border)'
+                  }}>
+                    <span style={{
+                      fontSize: '14px',
+                      flex: 1,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}>
+                      {session.title}
+                    </span>
+                    <button
+                      className="btn"
+                      onClick={() => restoreRecentlyClosed(session)}
+                      style={{fontSize: '12px', padding: '4px 8px'}}
+                      title="Restore this item"
+                    >
+                      ↻ Restore
+                    </button>
+                  </div>
+                ))}
+                {recentlyClosed.length > 5 && (
+                  <div style={{
+                    padding: '8px',
+                    fontSize: '12px',
+                    color: 'var(--muted)',
+                    textAlign: 'center'
+                  }}>
+                    +{recentlyClosed.length - 5} more items
+                  </div>
+                )}
+              </div>
+            </div>
           )}
         </ErrorBoundary>
       </div>
@@ -192,21 +541,38 @@ function App() {
   )
 }
 
-function HelpModal() {
+interface HelpModalProps {
+  thumbnailsEnabled: boolean
+  setThumbnailsEnabled: (value: boolean) => void
+  thumbnailQuality: number
+  setThumbnailQuality: (value: number) => void
+  captureThumbnailsNow: () => Promise<void>
+  clearThumbnailCache: () => Promise<void>
+  capturingThumbnails: boolean
+  captureProgress: string
+}
+
+function HelpModal({
+  thumbnailsEnabled,
+  setThumbnailsEnabled,
+  thumbnailQuality,
+  setThumbnailQuality,
+  captureThumbnailsNow,
+  clearThumbnailCache,
+  capturingThumbnails,
+  captureProgress
+}: HelpModalProps) {
   const [isOpen, setIsOpen] = React.useState(false)
 
   if (!isOpen) {
     return (
-      <div className="tabs-toolbar">
-        <button
-          className="toggle"
-          aria-label="Help"
-          onClick={() => setIsOpen(true)}
-          style={{fontSize: '16px', padding: '8px 10px'}}
-        >
-          ?
-        </button>
-      </div>
+      <button
+        className="toggle"
+        aria-label="Help"
+        onClick={() => setIsOpen(true)}
+      >
+        ?
+      </button>
     )
   }
 
@@ -271,17 +637,104 @@ function HelpModal() {
             <li><strong>Tabs View:</strong> Chrome-like tab preview</li>
           </ul>
 
-          <h3>Keyboard Shortcuts</h3>
+          <h3>Keyboard Navigation</h3>
+          <ul>
+            <li><strong>↑/↓ Arrow Keys:</strong> Navigate up/down through tab list</li>
+            <li><strong>Enter:</strong> Open the focused tab</li>
+            <li><strong>Space:</strong> Toggle selection of focused tab</li>
+            <li><strong>Cmd/Ctrl+A:</strong> Select all tabs</li>
+            <li><strong>Shift+Click:</strong> Select range of tabs</li>
+          </ul>
+
+          <h3>Extension Shortcuts</h3>
           <p style={{color: 'var(--muted)', fontStyle: 'italic'}}>
-            Configure shortcuts in Chrome: <br/>
+            Configure global shortcuts in Chrome: <br/>
             <code style={{background: 'var(--bg)', padding: '2px 4px', borderRadius: '4px'}}>
               chrome://extensions/shortcuts
             </code>
           </p>
 
+          <h3>Thumbnail Settings</h3>
+          <div style={{display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px'}}>
+            <label style={{display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer'}}>
+              <input
+                type="checkbox"
+                checked={thumbnailsEnabled}
+                onChange={(e) => setThumbnailsEnabled(e.target.checked)}
+                style={{cursor: 'pointer'}}
+              />
+              <span>Enable thumbnail previews on hover</span>
+            </label>
+            
+            <div style={{display: 'flex', flexDirection: 'column', gap: '4px'}}>
+              <label style={{fontSize: '13px'}}>
+                Quality: {thumbnailQuality}%
+              </label>
+              <input
+                type="range"
+                min="20"
+                max="100"
+                step="10"
+                value={thumbnailQuality}
+                onChange={(e) => setThumbnailQuality(parseInt(e.target.value, 10))}
+                style={{width: '100%'}}
+              />
+              <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--muted)'}}>
+                <span>Low (faster)</span>
+                <span>High (clearer)</span>
+              </div>
+            </div>
+            
+            <div style={{display: 'flex', gap: '8px', marginTop: '8px'}}>
+              <button
+                className="btn"
+                onClick={captureThumbnailsNow}
+                disabled={capturingThumbnails || !thumbnailsEnabled}
+                style={{
+                  fontSize: '12px',
+                  padding: '6px 12px',
+                  opacity: (capturingThumbnails || !thumbnailsEnabled) ? 0.5 : 1,
+                  cursor: (capturingThumbnails || !thumbnailsEnabled) ? 'not-allowed' : 'pointer'
+                }}
+              >
+                📸 Capture All Thumbnails
+              </button>
+              <button
+                className="btn"
+                onClick={clearThumbnailCache}
+                disabled={capturingThumbnails}
+                style={{
+                  fontSize: '12px',
+                  padding: '6px 12px',
+                  opacity: capturingThumbnails ? 0.5 : 1,
+                  cursor: capturingThumbnails ? 'not-allowed' : 'pointer'
+                }}
+              >
+                🗑️ Clear Cache
+              </button>
+            </div>
+            
+            {captureProgress && (
+              <div style={{
+                fontSize: '12px',
+                color: 'var(--accent)',
+                padding: '8px',
+                background: 'var(--bg)',
+                borderRadius: '6px',
+                border: '1px solid var(--border)'
+              }}>
+                {captureProgress}
+              </div>
+            )}
+          </div>
+          <p style={{marginTop: '12px', color: 'var(--muted)', fontSize: '11px'}}>
+            💡 <strong>How it works:</strong> Click &quot;Capture All Thumbnails&quot; to take screenshots of all open tabs.
+            The extension will briefly switch between tabs to capture each one. Hover over any tab in List view to see its preview.
+          </p>
+
           <p style={{marginTop: '16px', color: 'var(--muted)'}}>
-            <strong>Note:</strong> Keyboard shortcuts must be enabled in Chrome Extensions settings.
-            The extension provides visual feedback for all actions.
+            <strong>Note:</strong> Arrow key navigation works in List view. Keyboard shortcuts must be 
+            enabled in Chrome Extensions settings for global access.
           </p>
         </div>
       </div>
@@ -292,11 +745,9 @@ function HelpModal() {
 function ThemeToggle({ theme, setTheme }: { theme: string; setTheme: (t: 'dark'|'light') => void }) {
   const isDark = theme === 'dark'
   return (
-    <div className="tabs-toolbar">
-      <button className="toggle" aria-label="Toggle theme" onClick={() => setTheme(isDark ? 'light' : 'dark')}>
-        {isDark ? '☀️' : '🌙'}
-      </button>
-    </div>
+    <button className="toggle" aria-label="Toggle theme" onClick={() => setTheme(isDark ? 'light' : 'dark')}>
+      {isDark ? '☀️' : '🌙'}
+    </button>
   )
 }
 

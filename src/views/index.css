@@ -59,7 +59,13 @@ body {
   padding: 36px 20px;
 }
 
-.app-title { font-size: 24px; font-weight: 800; }
+.app-title { font-size: 24px; font-weight: 800; margin: 0; }
+.title { 
+  font-size: 16px; 
+  font-weight: 600; 
+  white-space: nowrap;
+  flex-shrink: 0;
+}
 .section { margin-top: 24px; }
 .mb-2 { margin-bottom: 8px; }
 .card { border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
@@ -72,11 +78,15 @@ body {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .toolbar-group {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .btn {
@@ -86,6 +96,8 @@ body {
   padding: 8px 12px;
   border-radius: 10px;
   box-shadow: var(--shadow);
+  white-space: nowrap;
+  font-size: 13px;
 }
 
 .btn:hover { background: var(--btn-hover-bg); color: var(--btn-hover-fg); border-color: var(--accent); }
@@ -97,6 +109,8 @@ body {
   padding: 8px 10px;
   border-radius: 10px;
   box-shadow: var(--shadow);
+  font-size: 13px;
+  min-width: 140px;
 }
 
 .list {
@@ -161,15 +175,71 @@ body {
   background: var(--btn-bg);
   color: var(--btn-fg);
   box-shadow: var(--shadow);
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
 }
 .toggle:hover { background: var(--btn-hover-bg); color: var(--btn-hover-fg); }
 .toggle.active { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-.wide-row { width: 90vw; margin-left: calc((100vw - 90vw)/2); }
+.btn-group {
+  display: inline-flex;
+}
+
+.dropdown-menu {
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+}
+
+.dropdown-item {
+  all: unset;
+  cursor: pointer;
+  padding: 8px 12px;
+  text-align: left;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.dropdown-item:hover {
+  background: var(--btn-hover-bg);
+}
+
+.time-ago {
+  color: var(--muted);
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.row-button:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.row-button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.row-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.wide-row { 
+  width: 90vw; 
+  max-width: 1400px;
+  margin: 0 auto;
+  padding-left: 20px;
+  padding-right: 20px;
+}
 .tabs-grid {
   display: grid;
-  grid-template-columns: repeat(10, minmax(0, 1fr));
-  column-gap: 4px;  /* tighter columns reduce visible seams */
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  column-gap: 8px;
   row-gap: 14px;
 }
 

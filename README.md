@@ -59,8 +59,15 @@ A Chrome extension to organize and manage multiple Chrome tabs into a single, or
 - `npm run test` / `npm run test:watch` — Vitest unit tests
 
 See also:
+- `docs/PROJECT_STATUS_OCT_20_2025.md` - ⭐ **CURRENT STATUS & FEATURE LIST**
+- `docs/THUMBNAIL_REBUILD_NOV_09.md` - 🔧 **THUMBNAIL SYSTEM REBUILD** (Latest)
+- `docs/THUMBNAIL_FIX_OCT_20.md` - 🔧 Previous thumbnail fix (superseded)
 - `docs/PHASE2_SPEC.md` for features/specs
 - `docs/PROJECT_TRACKING.md` for task tracking
+- `docs/FEATURE_TEST_GUIDE.md` for comprehensive testing checklist
+- `docs/KNOWN_GAPS_IMPLEMENTATION_COMPLETE.md` - ✅ All gaps resolved
+- `docs/IMPORT_FEATURE.md` for import functionality documentation
+- `docs/UI_IMPROVEMENTS_OCT_19_EVENING.md` for UI/layout changes
 - `docs/ROUTINE_CHECKLISTS.md` for workflow prompts
 - `docs/CODE_AUDIT.md` for code quality guardrails
 

@@ -244,6 +244,36 @@ Manual Steps:
 
 ---
 
+### Task 8: Thumbnail Capture Reliability
+**Priority**: 🟡 HIGH  
+**Estimate**: 2 hours  
+**Files modified**:
+- `src/services/ThumbnailService.ts`
+- `src/services/TabService.ts`
+- `src/views/App.tsx`
+- `src/components/TabManager/TabManager.tsx`
+- `src/components/ViewModes/TabsView.tsx`
+- `src/components/Common/ThumbnailPreview.tsx`
+
+**Actions**:
+1. Keyed cached thumbnails to persistent tab identifiers instead of transient Chrome IDs.
+2. Reworked bulk capture to reconcile Chrome tabs with stored entries and report progress.
+3. Cleared thumbnail cache entries when tabs are removed or storage is wiped.
+4. Shared hover preview component between List and Tabs views with quality controls.
+
+Status: 🟢 DONE (2025-11-09)  
+- Hover previews render in both views immediately after grabbing tabs.  
+- Capture-all workflow updates cache and reports success/failure counts.  
+- Removing or clearing tabs now removes related thumbnails.
+
+Manual Tests to Run:
+1) Grab the current tab, then hover it in List and Tabs view to confirm preview loads.  
+2) Trigger “Capture All Thumbnails” and verify progress text and resulting previews.  
+3) Remove a single tab and reload to ensure its preview no longer appears.  
+4) Run “Clear All” and check `chrome.storage.local` that thumbnail cache is empty.
+
+---
+
 ## 🧪 TESTING STRATEGY
 
 ### After Each Task:

@@ -6,6 +6,8 @@ export interface TabItem {
   capturedAt: string
   domain: string
   lastAccessed?: number
+  sourceTabId?: number
+  thumbnailKey?: string
 }
 
 export interface TabGroup {

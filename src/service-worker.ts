@@ -1,6 +1,8 @@
 import { TabService } from './services/TabService'
-// storage constants and service are unused here after refactor; keep imports minimal
+import { StorageService } from './services/StorageService'
+import { STORAGE_KEYS } from './constants/storage'
 import { CONTEXT_MENU_IDS, COMMAND_IDS } from './constants/ids'
+import type { TabItem } from './types/Tab'
 
 const appUrl = chrome.runtime.getURL('index.html')
 
@@ -56,6 +58,32 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
   const mapped = await TabService.captureCurrentWindowTabs({ onlyHighlightedIfAny: true })
   await TabService.appendCapturedTabs(mapped)
   openOrFocusAppTab({ pinned: true, active: true })
+})
+
+// Auto-capture tabs when window is closing
+chrome.windows.onRemoved.addListener(async () => {
+  try {
+    // Check if auto-capture is enabled
+    const autoCapture = await StorageService.get<boolean>(STORAGE_KEYS.autoCaptureOnClose)
+    if (autoCapture === false) return // Skip if explicitly disabled
+    
+    // Get all remaining windows
+    const remainingWindows = await chrome.windows.getAll()
+    
+    // If this was the last window, don't capture (browser is closing completely)
+    if (remainingWindows.length === 0) return
+    
+    const storedSnapshots = await StorageService.get<TabItem[]>(STORAGE_KEYS.tabSave)
+    if (!storedSnapshots?.length) {
+      return
+    }
+    
+    // TODO: Implement auto-capture by tracking tabs before window closes.
+    // Placeholder intentionally left for future implementation tracked in docs/CODE_AUDIT.md.
+    
+  } catch (error) {
+    console.error('Failed to auto-capture tabs on window close:', error)
+  }
 })
 
 
