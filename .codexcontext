@@ -1,0 +1,16 @@
+includes:
+  - public/manifest.json
+  - src/**
+  - docs/**
+excludes:
+  - node_modules/**
+  - dist/**
+  - build/**
+  - .parcel-cache/**
+  - .next/**
+  - coverage/**
+  - TabsAGO/**
+  - tabsago-export-*.html
+  - **/*.png
+  - **/*.jpg
+  - **/.git
