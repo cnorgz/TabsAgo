@@ -16,10 +16,24 @@
     "tabs",
     "contextMenus",
     "sessions",
-    "activeTab"
+    "activeTab",
+    "webNavigation",
+    "tabGroups",
+    "idle"
   ],
   "host_permissions": [
     "<all_urls>"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content/viewport.js"
+      ],
+      "run_at": "document_idle"
+    }
   ],
   "commands": {
     "capture-selected-tabs": {
@@ -33,5 +47,4 @@
   "web_accessible_resources": [],
   "icons": {}
 }
-
 

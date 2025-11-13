@@ -4,6 +4,7 @@ import { ErrorBoundary } from '../components/Common/ErrorBoundary'
 // Grouped history view removed from scope
 import TabManager from '../components/TabManager/TabManager'
 import TabsView from '../components/ViewModes/TabsView'
+import { PREF_DEFAULTS, PREF_KEYS } from '../constants/prefs'
 import { STORAGE_KEYS } from '../constants/storage'
 import { useChromeStorage } from '../hooks/useChromeStorage'
 import { TabService } from '../services/TabService'
@@ -13,6 +14,9 @@ import { SessionSafetyService } from '../services/SessionSafetyService'
 import { RecentlyClosedService, RecentlyClosedSession } from '../services/RecentlyClosedService'
 import { ThumbnailService } from '../services/ThumbnailService'
 import { TabItem } from '../types/Tab'
+
+const AUTO_CAPTURE_PREF_KEY = PREF_KEYS.AUTO_THUMBNAIL_CAPTURE
+const DEFAULT_AUTO_CAPTURE_PREF = PREF_DEFAULTS[AUTO_CAPTURE_PREF_KEY]
 
 function App() {
   const [mode, setMode] = React.useState<'list' | 'tabs'>(() => (localStorage.getItem(STORAGE_KEYS.mode) as 'list' | 'tabs' | null) || 'list')
@@ -41,10 +45,7 @@ function App() {
   const [showRecentlyClosed, setShowRecentlyClosed] = useState<boolean>(true)
   
   // Thumbnail state
-  const [thumbnailsEnabled, setThumbnailsEnabled] = useState<boolean>(() => {
-    const saved = localStorage.getItem('tabsago_thumbnails_enabled')
-    return saved === null ? true : saved === 'true'
-  })
+  const [thumbnailsEnabled, setThumbnailsEnabledState] = useState<boolean>(DEFAULT_AUTO_CAPTURE_PREF)
   const [thumbnailQuality, setThumbnailQuality] = useState<number>(() => {
     const saved = localStorage.getItem('tabsago_thumbnail_quality')
     return saved ? parseInt(saved, 10) : 70
@@ -57,14 +58,60 @@ function App() {
     localStorage.setItem('tabsago_sort', sortBy)
   }, [sortBy])
   
-  // Persist thumbnail preferences
   useEffect(() => {
-    localStorage.setItem('tabsago_thumbnails_enabled', String(thumbnailsEnabled))
-  }, [thumbnailsEnabled])
-  
+    if (typeof chrome === 'undefined' || !chrome.storage?.local) return
+    let cancelled = false
+
+    const hydratePreference = async () => {
+      try {
+        const stored = await chrome.storage.local.get(AUTO_CAPTURE_PREF_KEY)
+        if (cancelled) return
+        const storedValue = stored?.[AUTO_CAPTURE_PREF_KEY]
+        if (typeof storedValue === 'boolean') {
+          setThumbnailsEnabledState(storedValue)
+        } else {
+          await chrome.storage.local.set({ [AUTO_CAPTURE_PREF_KEY]: DEFAULT_AUTO_CAPTURE_PREF })
+          if (!cancelled) setThumbnailsEnabledState(DEFAULT_AUTO_CAPTURE_PREF)
+        }
+      } catch {
+        // Ignore hydration errors; UI will fall back to defaults.
+      }
+    }
+
+    void hydratePreference()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof chrome === 'undefined' || !chrome.storage?.onChanged) return
+
+    const handleChange = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
+      if (areaName !== 'local') return
+      if (Object.prototype.hasOwnProperty.call(changes, AUTO_CAPTURE_PREF_KEY)) {
+        const change = changes[AUTO_CAPTURE_PREF_KEY]
+        if (change && typeof change.newValue === 'boolean') {
+          setThumbnailsEnabledState(change.newValue)
+        }
+      }
+    }
+
+    chrome.storage.onChanged.addListener(handleChange)
+    return () => {
+      chrome.storage.onChanged.removeListener(handleChange)
+    }
+  }, [])
+
   useEffect(() => {
     localStorage.setItem('tabsago_thumbnail_quality', String(thumbnailQuality))
   }, [thumbnailQuality])
+
+  const updateThumbnailsEnabled = (value: boolean) => {
+    setThumbnailsEnabledState(value)
+    if (typeof chrome === 'undefined' || !chrome.storage?.local) return
+    void chrome.storage.local.set({ [AUTO_CAPTURE_PREF_KEY]: value })
+  }
 
   // Handle initial load
   useEffect(() => {
@@ -354,7 +401,7 @@ function App() {
             </button>
             <HelpModal 
               thumbnailsEnabled={thumbnailsEnabled}
-              setThumbnailsEnabled={setThumbnailsEnabled}
+              setThumbnailsEnabled={updateThumbnailsEnabled}
               thumbnailQuality={thumbnailQuality}
               setThumbnailQuality={setThumbnailQuality}
               captureThumbnailsNow={captureThumbnailsNow}
@@ -752,5 +799,3 @@ function ThemeToggle({ theme, setTheme }: { theme: string; setTheme: (t: 'dark'|
 }
 
 export default App
-
-
