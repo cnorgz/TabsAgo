@@ -201,6 +201,7 @@ const TabsView: React.FC<TabsViewProps> = ({
         <ThumbnailPreview
           tabId={hoveredTab.id}
           title={tabs.find(t => t.id === hoveredTab.id)?.title || ''}
+          url={tabs.find(t => t.id === hoveredTab.id)?.url || ''}
           isHovering={true}
           mouseX={hoveredTab.x}
           mouseY={hoveredTab.y}
@@ -211,5 +212,4 @@ const TabsView: React.FC<TabsViewProps> = ({
 }
 
 export default TabsView
-
 

@@ -7,9 +7,9 @@ import { captureScheduler } from './services/background/CaptureScheduler'
 import { thumbnailStore } from './services/background/ThumbnailStore'
 import { PREF_KEYS, PREF_DEFAULTS } from './constants/prefs'
 
-const VIEWPORT_SAVE = 'VIEWPORT_SAVE'
-const VIEWPORT_REQUEST = 'VIEWPORT_REQUEST'
-const VIEWPORT_RESTORE = 'VIEWPORT_RESTORE'
+const VPS_SAVE = 'VPS_SAVE'
+const VPS_REQUEST = 'VPS_REQUEST'
+const VPS_RESTORE = 'VPS_RESTORE'
 const VIEWPORT_KEY_PREFIX = 'vps'
 const AUTO_CAPTURE_PREF_KEY = PREF_KEYS.AUTO_THUMBNAIL_CAPTURE
 
@@ -78,15 +78,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.tabs.create({ url: message.url, active: true })
     return
   }
-  if (message?.type === VIEWPORT_SAVE) {
+  if (message?.type === VPS_SAVE) {
     void handleViewportSave(message.payload, sender)
     return
   }
-  if (message?.type === VIEWPORT_REQUEST) {
+  if (message?.type === VPS_REQUEST) {
     handleViewportRequest(message.payload, sender, sendResponse)
       .catch((error) => {
         console.error('Failed to handle viewport restore', error)
-        sendResponse({ type: VIEWPORT_RESTORE, payload: { scrollX: 0, scrollY: 0 } })
+        sendResponse({ type: VPS_RESTORE, payload: { scrollX: 0, scrollY: 0 } })
       })
     return true
   }
@@ -215,13 +215,13 @@ async function handleViewportRequest(
 ) {
   const defaultPayload = { scrollX: 0, scrollY: 0 }
   if (!autoCaptureEnabled) {
-    sendResponse({ type: VIEWPORT_RESTORE, payload: defaultPayload })
+    sendResponse({ type: VPS_RESTORE, payload: defaultPayload })
     return
   }
   const tabId = sender.tab?.id
   const url = typeof payload?.url === 'string' ? payload.url : ''
   if (tabId == null || !url) {
-    sendResponse({ type: VIEWPORT_RESTORE, payload: defaultPayload })
+    sendResponse({ type: VPS_RESTORE, payload: defaultPayload })
     return
   }
   const key = getViewportKey(tabId, url)
@@ -229,13 +229,13 @@ async function handleViewportRequest(
     const stored = await chrome.storage.session.get(key)
     const value = stored?.[key]
     if (value) {
-      sendResponse({ type: VIEWPORT_RESTORE, payload: { scrollX: value.scrollX ?? 0, scrollY: value.scrollY ?? 0 } })
+      sendResponse({ type: VPS_RESTORE, payload: { scrollX: value.scrollX ?? 0, scrollY: value.scrollY ?? 0 } })
       return
     }
   } catch (error) {
     console.warn('Failed to read viewport state', error)
   }
-  sendResponse({ type: VIEWPORT_RESTORE, payload: defaultPayload })
+  sendResponse({ type: VPS_RESTORE, payload: defaultPayload })
 }
 
 const getViewportKey = (tabId: number, url: string) => `${VIEWPORT_KEY_PREFIX}:${tabId}:${url}`

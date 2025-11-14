@@ -19,16 +19,21 @@ interface CaptureRequest {
 
 const MIN_CAPTURE_INTERVAL_MS = 750
 const SUPPORTED_PROTOCOL = /^https?:\/\//i
+const WINDOW_COOLDOWN_MS = 1200
 
 export class CaptureScheduler {
   private visitEpochs = new Map<number, VisitEpoch>()
   private tabWindows = new Map<number, number>()
   private activeTabsByWindow = new Map<number, number>()
-  private windowVisibility = new Map<number, { minimized: boolean }>()
+  private windowVisibility = new Map<
+    number,
+    { minimized: boolean; state?: 'normal' | 'minimized' | 'maximized' | 'fullscreen' | 'locked-fullscreen' }
+  >()
   private captureQueue: CaptureRequest[] = []
   private processingQueue = false
   private focusedWindowId: number | null = null
   private lastCaptureAt = 0
+  private windowCooldownUntil = new Map<number, number>()
   private captureHandler?: (metadata: CaptureMetadata) => Promise<void> | void
 
   async bootstrap() {
@@ -36,7 +41,7 @@ export class CaptureScheduler {
       const windows = await chrome.windows.getAll({ populate: true })
       for (const win of windows) {
         if (win.id == null) continue
-        this.windowVisibility.set(win.id, { minimized: win.state === 'minimized' })
+        this.windowVisibility.set(win.id, { minimized: win.state === 'minimized', state: win.state })
         if (win.focused) {
           this.focusedWindowId = win.id
         }
@@ -156,7 +161,10 @@ export class CaptureScheduler {
   }
 
   private updateEpochUrl(tabId: number, url: string) {
-    if (!url) return
+    if (!url || !this.isSupportedUrl(url)) {
+      this.visitEpochs.delete(tabId)
+      return
+    }
     const epoch = this.visitEpochs.get(tabId)
     if (!epoch) {
       this.startEpoch(tabId, url)
@@ -184,10 +192,10 @@ export class CaptureScheduler {
   private async refreshWindowState(windowId: number) {
     try {
       const win = await chrome.windows.get(windowId)
-      this.windowVisibility.set(windowId, { minimized: win.state === 'minimized' })
+      this.windowVisibility.set(windowId, { minimized: win.state === 'minimized', state: win.state })
     } catch (error) {
       console.warn('Unable to inspect window state', windowId, error)
-      this.windowVisibility.set(windowId, { minimized: false })
+      this.windowVisibility.set(windowId, { minimized: false, state: 'normal' as chrome.windows.WindowState })
     }
   }
 
@@ -196,7 +204,8 @@ export class CaptureScheduler {
     if (this.focusedWindowId == null) return false
     if (this.focusedWindowId !== windowId) return false
     const visibility = this.windowVisibility.get(windowId)
-    if (!visibility || visibility.minimized) return false
+    if (!visibility || visibility.minimized || visibility.state !== 'normal') return false
+    if (this.isWindowCoolingDown(windowId)) return false
     return true
   }
 
@@ -206,7 +215,7 @@ export class CaptureScheduler {
     if (!(await this.ensureTabActive(tabId))) return
     epoch.firstPending = true
     const windowId = this.tabWindows.get(tabId)
-    if (windowId == null || windowId === chrome.windows.WINDOW_ID_NONE) {
+    if (windowId == null || windowId === chrome.windows.WINDOW_ID_NONE || this.isWindowCoolingDown(windowId)) {
       epoch.firstPending = false
       return
     }
@@ -219,7 +228,7 @@ export class CaptureScheduler {
     if (!(await this.ensureTabActive(tabId))) return
     epoch.finalPending = true
     const windowId = this.tabWindows.get(tabId)
-    if (windowId == null || windowId === chrome.windows.WINDOW_ID_NONE) {
+    if (windowId == null || windowId === chrome.windows.WINDOW_ID_NONE || this.isWindowCoolingDown(windowId)) {
       epoch.finalPending = false
       return
     }
@@ -365,6 +374,25 @@ export class CaptureScheduler {
 
   private isSupportedUrl(url: string) {
     return SUPPORTED_PROTOCOL.test(url)
+  }
+
+  private isWindowCoolingDown(windowId: number) {
+    const until = this.windowCooldownUntil.get(windowId)
+    return typeof until === 'number' && Date.now() < until
+  }
+
+  private setWindowCooldown(windowId: number) {
+    this.windowCooldownUntil.set(windowId, Date.now() + WINDOW_COOLDOWN_MS)
+  }
+
+  private handleCaptureError(windowId: number, error: unknown) {
+    const message = typeof (error as any)?.message === 'string' ? (error as any).message : String(error)
+    if (/edited right now|No current window|Could not establish connection/i.test(message)) {
+      this.setWindowCooldown(windowId)
+      console.info('[CaptureScheduler] cooling down window', windowId, message)
+    } else {
+      console.warn('Capture failed', error)
+    }
   }
 }
 

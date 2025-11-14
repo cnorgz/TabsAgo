@@ -16,14 +16,18 @@ import { ThumbnailService } from '../../services/ThumbnailService'
 interface ThumbnailPreviewProps {
   tabId: string
   title: string
+  url: string
   isHovering: boolean
   mouseX: number
   mouseY: number
 }
 
+const isHttpUrl = (url: string) => /^https?:\/\//i.test(url)
+
 export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
   tabId,
   title,
+  url,
   isHovering,
   mouseX,
   mouseY
@@ -34,6 +38,11 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
   // Load thumbnail when hovering starts
   useEffect(() => {
     if (isHovering) {
+      if (!isHttpUrl(url)) {
+        setThumbnail(null)
+        setLoading(false)
+        return
+      }
       setLoading(true)
       ThumbnailService.getThumbnail(tabId)
         .then(url => {
@@ -133,4 +142,3 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
     </div>
   )
 }
-
