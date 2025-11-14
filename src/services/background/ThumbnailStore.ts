@@ -1,0 +1,206 @@
+import { CaptureMetadata, LegacyThumbnailEntry, ThumbnailRecord } from '../../types/thumbnail'
+
+const DB_NAME = 'tabsago-thumbnails'
+const STORE_NAME = 'thumbnails'
+const DB_VERSION = 1
+const MAX_PER_KEY = 2
+const TTL_MS = 14 * 24 * 60 * 60 * 1000
+const GLOBAL_CAP = 500
+const TARGET_WIDTH = 800
+const TARGET_HEIGHT = 500
+const TARGET_QUALITY = 0.6
+
+export class ThumbnailStore {
+  private dbPromise: Promise<IDBDatabase> | null = null
+  private migrationRan = false
+
+  async initialize() {
+    await this.ensureDb()
+    await this.runMigrationSafely()
+  }
+
+  async putCapture(metadata: CaptureMetadata) {
+    try {
+      const db = await this.ensureDb()
+      const normalized = await this.normalizeImage(metadata.dataUrl)
+      const record: ThumbnailRecord = {
+        tabId: metadata.tabId,
+        windowId: metadata.windowId,
+        url: metadata.url,
+        kind: metadata.kind,
+        blob: normalized.blob,
+        width: normalized.width,
+        height: normalized.height,
+        dpr: normalized.dpr,
+        capturedAt: Date.now(),
+      }
+      await this.storeRecord(db, record)
+    } catch (error) {
+      console.warn('ThumbnailStore.putCapture failed', error)
+    }
+  }
+
+  private async ensureDb(): Promise<IDBDatabase> {
+    if (this.dbPromise) return this.dbPromise
+    this.dbPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION)
+      request.onupgradeneeded = () => {
+        const db = request.result
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          const store = db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true })
+          store.createIndex('tabUrl', ['tabId', 'url'], { unique: false })
+          store.createIndex('capturedAt', 'capturedAt')
+        }
+      }
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    return this.dbPromise
+  }
+
+  private async storeRecord(db: IDBDatabase, record: ThumbnailRecord) {
+    await this.pruneExpired(db)
+    await this.insertRecord(db, record)
+    await this.prunePerKey(db, record.tabId, record.url)
+    await this.enforceGlobalCap(db)
+  }
+
+  private async insertRecord(db: IDBDatabase, record: ThumbnailRecord) {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite')
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+      tx.objectStore(STORE_NAME).add(record)
+    })
+  }
+
+  private async prunePerKey(db: IDBDatabase, tabId: number, url: string) {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite')
+      const store = tx.objectStore(STORE_NAME)
+      const index = store.index('tabUrl')
+      const request = index.getAll(IDBKeyRange.only([tabId, url]))
+      request.onsuccess = () => {
+        const items = request.result.sort((a, b) => b.capturedAt - a.capturedAt)
+        const toDelete = items.slice(MAX_PER_KEY)
+        for (const item of toDelete) {
+          if (item.id != null) {
+            store.delete(item.id)
+          }
+        }
+      }
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+  }
+
+  private async pruneExpired(db: IDBDatabase) {
+    const cutoff = Date.now() - TTL_MS
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite')
+      const index = tx.objectStore(STORE_NAME).index('capturedAt')
+      const request = index.openCursor()
+      request.onsuccess = () => {
+        const cursor = request.result
+        if (!cursor) return
+        if (cursor.value.capturedAt < cutoff) {
+          cursor.delete()
+          cursor.continue()
+        }
+      }
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+  }
+
+  private async enforceGlobalCap(db: IDBDatabase) {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite')
+      const store = tx.objectStore(STORE_NAME)
+      const index = store.index('capturedAt')
+      const countRequest = store.count()
+      countRequest.onsuccess = () => {
+        let toRemove = countRequest.result - GLOBAL_CAP
+        if (toRemove <= 0) {
+          return
+        }
+        const cursorRequest = index.openCursor()
+        cursorRequest.onsuccess = () => {
+          const cursor = cursorRequest.result
+          if (!cursor) return
+          if (toRemove <= 0) return
+          cursor.delete()
+          toRemove -= 1
+          cursor.continue()
+        }
+      }
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+  }
+
+  private async normalizeImage(dataUrl: string) {
+    try {
+      const blob = await this.dataUrlToBlob(dataUrl)
+      if (typeof createImageBitmap === 'function') {
+        const bitmap = await createImageBitmap(blob)
+        const target = this.calculateTargetDimensions(bitmap.width, bitmap.height)
+        if (typeof OffscreenCanvas !== 'undefined' && target.width > 0 && target.height > 0) {
+          const canvas = new OffscreenCanvas(target.width, target.height)
+          const ctx = canvas.getContext('2d')
+          if (ctx) {
+            ctx.drawImage(bitmap, 0, 0, target.width, target.height)
+            const scaledBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: TARGET_QUALITY })
+            return { blob: scaledBlob, width: target.width, height: target.height, dpr: 1 }
+          }
+        }
+        return { blob, width: bitmap.width, height: bitmap.height, dpr: 1 }
+      }
+      return { blob, width: TARGET_WIDTH, height: TARGET_HEIGHT, dpr: 1 }
+    } catch (error) {
+      console.warn('ThumbnailStore.normalizeImage fallback', error)
+      const blob = await this.dataUrlToBlob(dataUrl)
+      return { blob, width: TARGET_WIDTH, height: TARGET_HEIGHT, dpr: 1 }
+    }
+  }
+
+  private calculateTargetDimensions(width: number, height: number) {
+    const scaledWidth = Math.max(1, width)
+    const scaledHeight = Math.max(1, height)
+    const ratio = Math.min(TARGET_WIDTH / scaledWidth, TARGET_HEIGHT / scaledHeight, 1)
+    return {
+      width: Math.max(1, Math.round(scaledWidth * ratio)),
+      height: Math.max(1, Math.round(scaledHeight * ratio)),
+    }
+  }
+
+  private async dataUrlToBlob(dataUrl: string) {
+    const response = await fetch(dataUrl)
+    return await response.blob()
+  }
+
+  private async runMigrationSafely() {
+    if (this.migrationRan) return
+    this.migrationRan = true
+    try {
+      const legacy = await chrome.storage.local.get('tabsago_thumbnails')
+      const entries = legacy?.tabsago_thumbnails as Record<string, LegacyThumbnailEntry> | undefined
+      if (!entries) return
+      for (const entry of Object.values(entries)) {
+        if (!entry?.dataUrl) continue
+        await this.putCapture({
+          tabId: entry.tabId,
+          windowId: chrome.windows.WINDOW_ID_NONE,
+          url: entry.url,
+          kind: 'first',
+          dataUrl: entry.dataUrl,
+        })
+      }
+      await chrome.storage.local.remove('tabsago_thumbnails')
+    } catch (error) {
+      console.warn('ThumbnailStore migration failed', error)
+    }
+  }
+}
+
+export const thumbnailStore = new ThumbnailStore()

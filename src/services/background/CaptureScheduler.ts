@@ -1,4 +1,4 @@
-type CaptureKind = 'first' | 'final'
+import type { CaptureKind, CaptureMetadata } from '../../types/thumbnail'
 
 interface VisitEpoch {
   tabId: number
@@ -28,6 +28,7 @@ export class CaptureScheduler {
   private processingQueue = false
   private focusedWindowId: number | null = null
   private lastCaptureAt = 0
+  private captureHandler?: (metadata: CaptureMetadata) => Promise<void> | void
 
   async bootstrap() {
     try {
@@ -52,6 +53,10 @@ export class CaptureScheduler {
     } catch (error) {
       console.warn('CaptureScheduler bootstrap failed', error)
     }
+  }
+
+  setCaptureHandler(handler: (metadata: CaptureMetadata) => Promise<void> | void) {
+    this.captureHandler = handler
   }
 
   async handleWindowFocusChanged(windowId: number) {
@@ -282,7 +287,17 @@ export class CaptureScheduler {
       if (currentActive !== request.tabId) {
         return false
       }
-      await chrome.tabs.captureVisibleTab(request.windowId)
+      const dataUrl = await this.captureVisibleTab(request.windowId)
+      const metadata: CaptureMetadata = {
+        tabId: request.tabId,
+        windowId: request.windowId,
+        url: request.url,
+        kind: request.kind,
+        dataUrl,
+      }
+      if (this.captureHandler) {
+        await this.captureHandler(metadata)
+      }
       console.info('[CaptureScheduler]', request.kind, 'capture scheduled for', request.tabId, request.url)
       try {
         await chrome.runtime.sendMessage({
@@ -330,6 +345,18 @@ export class CaptureScheduler {
 
   private delay(ms: number) {
     return new Promise<void>((resolve) => setTimeout(resolve, ms))
+  }
+
+  private captureVisibleTab(windowId: number) {
+    return new Promise<string>((resolve, reject) => {
+      chrome.tabs.captureVisibleTab(windowId, { format: 'jpeg', quality: 80 }, (dataUrl) => {
+        if (chrome.runtime.lastError || !dataUrl) {
+          reject(chrome.runtime.lastError ?? new Error('captureVisibleTab failed'))
+          return
+        }
+        resolve(dataUrl)
+      })
+    })
   }
 }
 

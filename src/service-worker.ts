@@ -4,6 +4,7 @@ import { STORAGE_KEYS } from './constants/storage'
 import { CONTEXT_MENU_IDS, COMMAND_IDS } from './constants/ids'
 import type { TabItem } from './types/Tab'
 import { captureScheduler } from './services/background/CaptureScheduler'
+import { thumbnailStore } from './services/background/ThumbnailStore'
 
 const appUrl = chrome.runtime.getURL('index.html')
 
@@ -32,6 +33,14 @@ chrome.runtime.onInstalled.addListener(() => {
 // Ensure the pinned TabsAGO tab is present after a browser restart
 chrome.runtime.onStartup.addListener(() => {
   openOrFocusAppTab({ pinned: true, active: false })
+})
+
+thumbnailStore.initialize().catch((error) => {
+  console.error('ThumbnailStore initialization error', error)
+})
+
+captureScheduler.setCaptureHandler(async (metadata) => {
+  await thumbnailStore.putCapture(metadata)
 })
 
 captureScheduler.bootstrap().catch((error) => {
@@ -132,4 +141,3 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
     console.error('Failed to process before navigate', error)
   })
 })
-
