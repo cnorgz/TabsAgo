@@ -3,6 +3,7 @@ import { StorageService } from './services/StorageService'
 import { STORAGE_KEYS } from './constants/storage'
 import { CONTEXT_MENU_IDS, COMMAND_IDS } from './constants/ids'
 import type { TabItem } from './types/Tab'
+import { captureScheduler } from './services/background/CaptureScheduler'
 
 const appUrl = chrome.runtime.getURL('index.html')
 
@@ -31,6 +32,10 @@ chrome.runtime.onInstalled.addListener(() => {
 // Ensure the pinned TabsAGO tab is present after a browser restart
 chrome.runtime.onStartup.addListener(() => {
   openOrFocusAppTab({ pinned: true, active: false })
+})
+
+captureScheduler.bootstrap().catch((error) => {
+  console.error('CaptureScheduler bootstrap error', error)
 })
 
 chrome.action.onClicked.addListener(() => {
@@ -86,4 +91,45 @@ chrome.windows.onRemoved.addListener(async () => {
   }
 })
 
+chrome.tabs.onActivated.addListener((activeInfo) => {
+  captureScheduler.handleTabActivated(activeInfo).catch((error) => {
+    console.error('Failed to process tab activation', error)
+  })
+})
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  captureScheduler.handleTabUpdated(tabId, changeInfo, tab).catch((error) => {
+    console.error('Failed to process tab update', error)
+  })
+})
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  captureScheduler.handleTabRemoved(tabId).catch((error) => {
+    console.error('Failed to cleanup removed tab', error)
+  })
+})
+
+chrome.windows.onFocusChanged.addListener((windowId) => {
+  captureScheduler.handleWindowFocusChanged(windowId).catch((error) => {
+    console.error('Failed to process window focus change', error)
+  })
+})
+
+chrome.webNavigation.onCommitted.addListener((details) => {
+  captureScheduler.handleNavigationCommitted(details).catch((error) => {
+    console.error('Failed to process navigation commit', error)
+  })
+})
+
+chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
+  captureScheduler.handleHistoryStateUpdated(details).catch((error) => {
+    console.error('Failed to process history state update', error)
+  })
+})
+
+chrome.webNavigation.onBeforeNavigate.addListener((details) => {
+  captureScheduler.handleBeforeNavigate(details).catch((error) => {
+    console.error('Failed to process before navigate', error)
+  })
+})
 
