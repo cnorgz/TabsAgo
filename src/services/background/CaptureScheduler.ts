@@ -18,6 +18,7 @@ interface CaptureRequest {
 }
 
 const MIN_CAPTURE_INTERVAL_MS = 750
+const SUPPORTED_PROTOCOL = /^https?:\/\//i
 
 export class CaptureScheduler {
   private visitEpochs = new Map<number, VisitEpoch>()
@@ -138,7 +139,10 @@ export class CaptureScheduler {
   }
 
   private startEpoch(tabId: number, url: string) {
-    if (!url) return
+    if (!url || !this.isSupportedUrl(url)) {
+      this.visitEpochs.delete(tabId)
+      return
+    }
     const epoch: VisitEpoch = {
       tabId,
       url,
@@ -188,21 +192,21 @@ export class CaptureScheduler {
   }
 
   private isWindowEligible(windowId: number | undefined) {
-    if (windowId == null) return false
+    if (windowId == null || windowId === chrome.windows.WINDOW_ID_NONE) return false
     if (this.focusedWindowId == null) return false
     if (this.focusedWindowId !== windowId) return false
     const visibility = this.windowVisibility.get(windowId)
-    if (visibility?.minimized) return false
+    if (!visibility || visibility.minimized) return false
     return true
   }
 
   private async scheduleFirstCapture(tabId: number) {
     const epoch = this.visitEpochs.get(tabId)
-    if (!epoch || epoch.firstCompleted || epoch.firstPending) return
+    if (!epoch || epoch.firstCompleted || epoch.firstPending || !this.isSupportedUrl(epoch.url)) return
     if (!(await this.ensureTabActive(tabId))) return
     epoch.firstPending = true
     const windowId = this.tabWindows.get(tabId)
-    if (windowId == null) {
+    if (windowId == null || windowId === chrome.windows.WINDOW_ID_NONE) {
       epoch.firstPending = false
       return
     }
@@ -211,11 +215,11 @@ export class CaptureScheduler {
 
   private async scheduleFinalCapture(tabId: number) {
     const epoch = this.visitEpochs.get(tabId)
-    if (!epoch || epoch.finalCompleted || epoch.finalPending) return
+    if (!epoch || epoch.finalCompleted || epoch.finalPending || !this.isSupportedUrl(epoch.url)) return
     if (!(await this.ensureTabActive(tabId))) return
     epoch.finalPending = true
     const windowId = this.tabWindows.get(tabId)
-    if (windowId == null) {
+    if (windowId == null || windowId === chrome.windows.WINDOW_ID_NONE) {
       epoch.finalPending = false
       return
     }
@@ -357,6 +361,10 @@ export class CaptureScheduler {
         resolve(dataUrl)
       })
     })
+  }
+
+  private isSupportedUrl(url: string) {
+    return SUPPORTED_PROTOCOL.test(url)
   }
 }
 

@@ -1,48 +1,68 @@
-const SESSION_KEY = 'tabsago_viewport_event'
+const VIEWPORT_SAVE = 'VIEWPORT_SAVE'
+const VIEWPORT_REQUEST = 'VIEWPORT_REQUEST'
+const VIEWPORT_RESTORE = 'VIEWPORT_RESTORE'
 
-type ViewportEventType = 'visibilitychange' | 'pagehide' | 'pageshow'
-
-interface ViewportEventPayload {
-  type: ViewportEventType
-  visibilityState: DocumentVisibilityState
-  timestamp: number
-  persisted?: boolean
-}
-
-const persistEvent = async (payload: ViewportEventPayload) => {
-  if (typeof chrome === 'undefined' || !chrome.storage?.session) return
-
+const getUrl = () => {
   try {
-    await chrome.storage.session.set({ [SESSION_KEY]: payload })
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.warn('TabsAGO viewport content script failed to persist event', error)
+    return window.location.href
+  } catch {
+    return ''
   }
 }
 
-document.addEventListener('visibilitychange', () => {
-  void persistEvent({
-    type: 'visibilitychange',
-    visibilityState: document.visibilityState,
-    timestamp: Date.now()
-  })
-})
+const getViewportPayload = () => {
+  return {
+    scrollX: window.scrollX,
+    scrollY: window.scrollY,
+    vw: window.innerWidth,
+    vh: window.innerHeight,
+    dpr: window.devicePixelRatio || 1,
+    url: getUrl(),
+    ts: Date.now(),
+  }
+}
 
-window.addEventListener('pagehide', () => {
-  void persistEvent({
-    type: 'pagehide',
-    visibilityState: document.visibilityState,
-    timestamp: Date.now()
-  })
-})
+const sendMessage = (message: any) => {
+  try {
+    chrome.runtime.sendMessage(message)
+  } catch (error) {
+    console.debug('viewport message failed', error)
+  }
+}
 
-window.addEventListener('pageshow', (event) => {
-  void persistEvent({
-    type: 'pageshow',
-    visibilityState: document.visibilityState,
-    timestamp: Date.now(),
-    persisted: Boolean((event as PageTransitionEvent).persisted)
-  })
-})
+const handleSave = () => {
+  const payload = getViewportPayload()
+  if (!payload.url) return
+  sendMessage({ type: VIEWPORT_SAVE, payload })
+}
 
-export {}
+const handleRestoreRequest = () => {
+  const url = getUrl()
+  if (!url) return
+  try {
+    chrome.runtime.sendMessage({ type: VIEWPORT_REQUEST, payload: { url } }, (response) => {
+      if (chrome.runtime.lastError || !response) {
+        return
+      }
+      if (response.type === VIEWPORT_RESTORE && response.payload) {
+        const { scrollX = 0, scrollY = 0 } = response.payload
+        window.scrollTo({ left: scrollX, top: scrollY, behavior: 'auto' })
+      }
+    })
+  } catch (error) {
+    console.debug('viewport restore request failed', error)
+  }
+}
+
+const setup = () => {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      handleSave()
+    }
+  })
+
+  window.addEventListener('pagehide', handleSave)
+  window.addEventListener('pageshow', handleRestoreRequest)
+}
+
+setup()

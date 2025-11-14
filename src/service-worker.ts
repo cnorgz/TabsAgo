@@ -5,6 +5,15 @@ import { CONTEXT_MENU_IDS, COMMAND_IDS } from './constants/ids'
 import type { TabItem } from './types/Tab'
 import { captureScheduler } from './services/background/CaptureScheduler'
 import { thumbnailStore } from './services/background/ThumbnailStore'
+import { PREF_KEYS, PREF_DEFAULTS } from './constants/prefs'
+
+const VIEWPORT_SAVE = 'VIEWPORT_SAVE'
+const VIEWPORT_REQUEST = 'VIEWPORT_REQUEST'
+const VIEWPORT_RESTORE = 'VIEWPORT_RESTORE'
+const VIEWPORT_KEY_PREFIX = 'vps'
+const AUTO_CAPTURE_PREF_KEY = PREF_KEYS.AUTO_THUMBNAIL_CAPTURE
+
+let autoCaptureEnabled: boolean = PREF_DEFAULTS[AUTO_CAPTURE_PREF_KEY]
 
 const appUrl = chrome.runtime.getURL('index.html')
 
@@ -47,6 +56,10 @@ captureScheduler.bootstrap().catch((error) => {
   console.error('CaptureScheduler bootstrap error', error)
 })
 
+initializeAutoCapturePref().catch((error) => {
+  console.error('Failed to initialize auto capture pref', error)
+})
+
 chrome.action.onClicked.addListener(() => {
   openOrFocusAppTab({ pinned: true, active: true })
 })
@@ -60,9 +73,30 @@ chrome.commands.onCommand.addListener(async (command) => {
   openOrFocusAppTab({ pinned: true, active: true })
 })
 
-chrome.runtime.onMessage.addListener((message) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'CREATE_TAB' && typeof message.url === 'string') {
     chrome.tabs.create({ url: message.url, active: true })
+    return
+  }
+  if (message?.type === VIEWPORT_SAVE) {
+    void handleViewportSave(message.payload, sender)
+    return
+  }
+  if (message?.type === VIEWPORT_REQUEST) {
+    handleViewportRequest(message.payload, sender, sendResponse)
+      .catch((error) => {
+        console.error('Failed to handle viewport restore', error)
+        sendResponse({ type: VIEWPORT_RESTORE, payload: { scrollX: 0, scrollY: 0 } })
+      })
+    return true
+  }
+})
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'local') return
+  if (Object.prototype.hasOwnProperty.call(changes, AUTO_CAPTURE_PREF_KEY)) {
+    const change = changes[AUTO_CAPTURE_PREF_KEY]
+    autoCaptureEnabled = change.newValue !== false
   }
 })
 
@@ -137,7 +171,71 @@ chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
 })
 
 chrome.webNavigation.onBeforeNavigate.addListener((details) => {
-  captureScheduler.handleBeforeNavigate(details).catch((error) => {
-    console.error('Failed to process before navigate', error)
-  })
+captureScheduler.handleBeforeNavigate(details).catch((error) => {
+  console.error('Failed to process before navigate', error)
 })
+})
+
+async function initializeAutoCapturePref() {
+  try {
+    const stored = await chrome.storage.local.get(AUTO_CAPTURE_PREF_KEY)
+    const value = stored?.[AUTO_CAPTURE_PREF_KEY]
+    autoCaptureEnabled = value !== false
+  } catch (error) {
+    console.error('Failed to read auto capture pref', error)
+    autoCaptureEnabled = true
+  }
+}
+
+async function handleViewportSave(payload: any, sender: chrome.runtime.MessageSender) {
+  if (!autoCaptureEnabled) return
+  const tabId = sender.tab?.id
+  const url = typeof payload?.url === 'string' ? payload.url : ''
+  if (tabId == null || !url) return
+  const key = getViewportKey(tabId, url)
+  const data = {
+    scrollX: Number(payload?.scrollX) || 0,
+    scrollY: Number(payload?.scrollY) || 0,
+    vw: Number(payload?.vw) || 0,
+    vh: Number(payload?.vh) || 0,
+    dpr: Number(payload?.dpr) || 1,
+    ts: Number(payload?.ts) || Date.now(),
+  }
+  try {
+    await chrome.storage.session.set({ [key]: data })
+  } catch (error) {
+    console.warn('Failed to save viewport state', error)
+  }
+}
+
+async function handleViewportRequest(
+  payload: any,
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: any) => void,
+) {
+  const defaultPayload = { scrollX: 0, scrollY: 0 }
+  if (!autoCaptureEnabled) {
+    sendResponse({ type: VIEWPORT_RESTORE, payload: defaultPayload })
+    return
+  }
+  const tabId = sender.tab?.id
+  const url = typeof payload?.url === 'string' ? payload.url : ''
+  if (tabId == null || !url) {
+    sendResponse({ type: VIEWPORT_RESTORE, payload: defaultPayload })
+    return
+  }
+  const key = getViewportKey(tabId, url)
+  try {
+    const stored = await chrome.storage.session.get(key)
+    const value = stored?.[key]
+    if (value) {
+      sendResponse({ type: VIEWPORT_RESTORE, payload: { scrollX: value.scrollX ?? 0, scrollY: value.scrollY ?? 0 } })
+      return
+    }
+  } catch (error) {
+    console.warn('Failed to read viewport state', error)
+  }
+  sendResponse({ type: VIEWPORT_RESTORE, payload: defaultPayload })
+}
+
+const getViewportKey = (tabId: number, url: string) => `${VIEWPORT_KEY_PREFIX}:${tabId}:${url}`
