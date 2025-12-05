@@ -741,10 +741,12 @@ function HelpModal({
                   fontSize: '12px',
                   padding: '6px 12px',
                   opacity: (capturingThumbnails || !thumbnailsEnabled) ? 0.5 : 1,
-                  cursor: (capturingThumbnails || !thumbnailsEnabled) ? 'not-allowed' : 'pointer'
+                  cursor: (capturingThumbnails || !thumbnailsEnabled) ? 'not-allowed' : 'pointer',
+                  background: 'var(--panel)',
+                  border: '1px solid var(--border)'
                 }}
               >
-                📸 Capture All Thumbnails
+                Refresh thumbnails (optional)
               </button>
               <button
                 className="btn"
@@ -761,23 +763,23 @@ function HelpModal({
               </button>
             </div>
             
-            {captureProgress && (
-              <div style={{
-                fontSize: '12px',
-                color: 'var(--accent)',
-                padding: '8px',
+              {captureProgress && (
+                <div style={{
+                  fontSize: '12px',
+                  color: 'var(--accent)',
+                  padding: '8px',
                 background: 'var(--bg)',
                 borderRadius: '6px',
                 border: '1px solid var(--border)'
               }}>
-                {captureProgress}
+          {captureProgress}
               </div>
-            )}
-          </div>
-          <p style={{marginTop: '12px', color: 'var(--muted)', fontSize: '11px'}}>
-            💡 <strong>How it works:</strong> Click &quot;Capture All Thumbnails&quot; to take screenshots of all open tabs.
-            The extension will briefly switch between tabs to capture each one. Hover over any tab in List view to see its preview.
-          </p>
+              )}
+            </div>
+            <p style={{marginTop: '12px', color: 'var(--muted)', fontSize: '11px'}}>
+            💡 <strong>How it works:</strong> Thumbnails are captured automatically while you browse when previews are enabled.
+            Use the refresh option only if a preview looks stale. Hover over any tab in List view to see its preview.
+            </p>
 
           <p style={{marginTop: '16px', color: 'var(--muted)'}}>
             <strong>Note:</strong> Arrow key navigation works in List view. Keyboard shortcuts must be 

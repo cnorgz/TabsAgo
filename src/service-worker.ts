@@ -10,6 +10,8 @@ import { PREF_KEYS, PREF_DEFAULTS } from './constants/prefs'
 const VPS_SAVE = 'VPS_SAVE'
 const VPS_REQUEST = 'VPS_REQUEST'
 const VPS_RESTORE = 'VPS_RESTORE'
+const THUMBS_GET_LATEST = 'THUMBS_GET_LATEST'
+const THUMBS_GET_LATEST_OK = 'THUMBS_GET_LATEST_OK'
 const VIEWPORT_KEY_PREFIX = 'vps'
 const AUTO_CAPTURE_PREF_KEY = PREF_KEYS.AUTO_THUMBNAIL_CAPTURE
 
@@ -87,6 +89,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((error) => {
         console.error('Failed to handle viewport restore', error)
         sendResponse({ type: VPS_RESTORE, payload: { scrollX: 0, scrollY: 0 } })
+      })
+    return true
+  }
+  if (message?.type === THUMBS_GET_LATEST) {
+    handleThumbnailRequest(message.payload, sender, sendResponse)
+      .catch((error) => {
+        console.error('Failed to handle thumbnail request', error)
+        sendResponse({ type: THUMBS_GET_LATEST_OK, payload: { items: [] } })
       })
     return true
   }
@@ -239,3 +249,44 @@ async function handleViewportRequest(
 }
 
 const getViewportKey = (tabId: number, url: string) => `${VIEWPORT_KEY_PREFIX}:${tabId}:${url}`
+
+async function handleThumbnailRequest(
+  payload: any,
+  _sender: chrome.runtime.MessageSender,
+  sendResponse: (response: any) => void,
+) {
+  const tabId = Number(payload?.tabId)
+  const url = typeof payload?.url === 'string' ? payload.url : ''
+  if (!Number.isFinite(tabId) || !url) {
+    sendResponse({ type: THUMBS_GET_LATEST_OK, payload: { dataUrl: null } })
+    return
+  }
+  try {
+    const latest = await thumbnailStore.getLatestRecord(tabId, url)
+    if (!latest) {
+      sendResponse({ type: THUMBS_GET_LATEST_OK, payload: { dataUrl: null } })
+      return
+    }
+    const dataUrl = await blobToDataUrl(latest.blob)
+    sendResponse({ type: THUMBS_GET_LATEST_OK, payload: { dataUrl } })
+  } catch (error) {
+    console.error('Thumbnail fetch failed', error)
+    sendResponse({ type: THUMBS_GET_LATEST_OK, payload: { dataUrl: null } })
+  }
+}
+
+async function blobToDataUrl(blob: Blob) {
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      const result = reader.result
+      if (typeof result === 'string') {
+        resolve(result)
+      } else {
+        reject(new Error('Failed to read blob'))
+      }
+    }
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(blob)
+  })
+}

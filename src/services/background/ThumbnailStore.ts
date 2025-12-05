@@ -40,6 +40,47 @@ export class ThumbnailStore {
     }
   }
 
+  async getLatest(tabId: number, url: string, limit = 2): Promise<ThumbnailRecord[]> {
+    try {
+      if (!this.isValidInput(tabId, url)) return []
+      const db = await this.ensureDb()
+      const items = await new Promise<ThumbnailRecord[]>((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readonly')
+        const store = tx.objectStore(STORE_NAME)
+        const index = store.index('capturedAt')
+        const results: ThumbnailRecord[] = []
+        const request = index.openCursor(null, 'prev')
+        request.onsuccess = () => {
+          const cursor = request.result
+          if (!cursor) {
+            resolve(results)
+            return
+          }
+          const value = cursor.value as ThumbnailRecord
+          if (value.tabId === tabId && value.url === url) {
+            results.push(value)
+            if (results.length >= limit) {
+              resolve(results)
+              return
+            }
+          }
+          cursor.continue()
+        }
+        request.onerror = () => reject(request.error)
+        tx.onerror = () => reject(tx.error)
+      })
+      return items
+    } catch (error) {
+      console.warn('ThumbnailStore.getLatest failed', error)
+      return []
+    }
+  }
+
+  async getLatestRecord(tabId: number, url: string): Promise<ThumbnailRecord | null> {
+    const items = await this.getLatest(tabId, url, 1)
+    return items[0] ?? null
+  }
+
   private async ensureDb(): Promise<IDBDatabase> {
     if (this.dbPromise) return this.dbPromise
     this.dbPromise = new Promise((resolve, reject) => {
@@ -72,6 +113,10 @@ export class ThumbnailStore {
       tx.onerror = () => reject(tx.error)
       tx.objectStore(STORE_NAME).add(record)
     })
+  }
+
+  private isValidInput(tabId: number, url: string) {
+    return Number.isFinite(tabId) && typeof url === 'string' && url.length > 0
   }
 
   private async prunePerKey(db: IDBDatabase, tabId: number, url: string) {

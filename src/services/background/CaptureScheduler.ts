@@ -17,9 +17,11 @@ interface CaptureRequest {
   kind: CaptureKind
 }
 
-const MIN_CAPTURE_INTERVAL_MS = 750
+const GLOBAL_MIN_INTERVAL_MS = 1000
+const TAB_MIN_INTERVAL_MS = 2500
 const SUPPORTED_PROTOCOL = /^https?:\/\//i
-const WINDOW_COOLDOWN_MS = 1200
+const WINDOW_COOLDOWN_MS = 3000
+const ERROR_COOLDOWN_MS = 10_000
 
 export class CaptureScheduler {
   private visitEpochs = new Map<number, VisitEpoch>()
@@ -33,7 +35,9 @@ export class CaptureScheduler {
   private processingQueue = false
   private focusedWindowId: number | null = null
   private lastCaptureAt = 0
+  private tabCooldownUntil = new Map<number, number>()
   private windowCooldownUntil = new Map<number, number>()
+  private errorLogTimestamps = new Map<string, number>()
   private captureHandler?: (metadata: CaptureMetadata) => Promise<void> | void
 
   async bootstrap() {
@@ -215,11 +219,11 @@ export class CaptureScheduler {
     if (!(await this.ensureTabActive(tabId))) return
     epoch.firstPending = true
     const windowId = this.tabWindows.get(tabId)
-    if (windowId == null || windowId === chrome.windows.WINDOW_ID_NONE || this.isWindowCoolingDown(windowId)) {
+    if (!this.canCaptureWindow(windowId) || this.isTabCoolingDown(tabId)) {
       epoch.firstPending = false
       return
     }
-    this.enqueueCapture({ tabId, windowId, url: epoch.url, kind: 'first' })
+    this.enqueueCapture({ tabId, windowId: windowId!, url: epoch.url, kind: 'first' })
   }
 
   private async scheduleFinalCapture(tabId: number) {
@@ -228,11 +232,11 @@ export class CaptureScheduler {
     if (!(await this.ensureTabActive(tabId))) return
     epoch.finalPending = true
     const windowId = this.tabWindows.get(tabId)
-    if (windowId == null || windowId === chrome.windows.WINDOW_ID_NONE || this.isWindowCoolingDown(windowId)) {
+    if (!this.canCaptureWindow(windowId) || this.isTabCoolingDown(tabId)) {
       epoch.finalPending = false
       return
     }
-    this.enqueueCapture({ tabId, windowId, url: epoch.url, kind: 'final' })
+    this.enqueueCapture({ tabId, windowId: windowId!, url: epoch.url, kind: 'final' })
   }
 
   private enqueueCapture(request: CaptureRequest) {
@@ -262,11 +266,15 @@ export class CaptureScheduler {
       }
       const now = Date.now()
       const elapsed = now - this.lastCaptureAt
-      if (elapsed < MIN_CAPTURE_INTERVAL_MS) {
-        await this.delay(MIN_CAPTURE_INTERVAL_MS - elapsed)
+      if (elapsed < GLOBAL_MIN_INTERVAL_MS) {
+        await this.delay(GLOBAL_MIN_INTERVAL_MS - elapsed)
       }
       const success = await this.executeCapture(request)
-      this.lastCaptureAt = Date.now()
+      const completedAt = Date.now()
+      this.lastCaptureAt = completedAt
+      if (success) {
+        this.tabCooldownUntil.set(request.tabId, completedAt + TAB_MIN_INTERVAL_MS)
+      }
       if (success) {
         this.markCompleted(epoch, request.kind)
       } else {
@@ -298,6 +306,9 @@ export class CaptureScheduler {
     try {
       const currentActive = this.activeTabsByWindow.get(request.windowId)
       if (currentActive !== request.tabId) {
+        return false
+      }
+      if (this.isTabCoolingDown(request.tabId)) {
         return false
       }
       const dataUrl = await this.captureVisibleTab(request.windowId)
@@ -340,7 +351,7 @@ export class CaptureScheduler {
             this.activeTabsByWindow.set(tab.windowId, tabId)
           }
           windowId = tab.windowId
-          if (!tab.active || !this.isWindowEligible(windowId)) {
+          if (!this.isTabEligible(tab) || !this.isWindowEligible(windowId)) {
             return false
           }
           return true
@@ -353,7 +364,15 @@ export class CaptureScheduler {
       return false
     }
     const activeTabId = this.activeTabsByWindow.get(windowId)
-    return activeTabId === tabId
+    if (activeTabId !== tabId) {
+      return false
+    }
+    try {
+      const tab = await chrome.tabs.get(tabId)
+      return this.isTabEligible(tab)
+    } catch {
+      return false
+    }
   }
 
   private delay(ms: number) {
@@ -376,7 +395,8 @@ export class CaptureScheduler {
     return SUPPORTED_PROTOCOL.test(url)
   }
 
-  private isWindowCoolingDown(windowId: number) {
+  private isWindowCoolingDown(windowId: number | undefined) {
+    if (windowId == null) return false
     const until = this.windowCooldownUntil.get(windowId)
     return typeof until === 'number' && Date.now() < until
   }
@@ -387,11 +407,37 @@ export class CaptureScheduler {
 
   private handleCaptureError(windowId: number, error: unknown) {
     const message = typeof (error as any)?.message === 'string' ? (error as any).message : String(error)
-    if (/edited right now|No current window|Could not establish connection/i.test(message)) {
+    if (/edited right now|No current window|Could not establish connection|Receiving end does not exist/i.test(message)) {
       this.setWindowCooldown(windowId)
-      console.info('[CaptureScheduler] cooling down window', windowId, message)
+      this.logInfoOnce(`[CaptureScheduler] cooling down window ${windowId}: ${message}`)
     } else {
       console.warn('Capture failed', error)
+    }
+  }
+
+  private isTabEligible(tab: chrome.tabs.Tab) {
+    if (!tab.url || !this.isSupportedUrl(tab.url)) return false
+    if (tab.status && tab.status !== 'complete') return false
+    if (tab.discarded) return false
+    if (tab.audible) return false
+    return true
+  }
+
+  private canCaptureWindow(windowId: number | undefined) {
+    return windowId != null && windowId !== chrome.windows.WINDOW_ID_NONE && !this.isWindowCoolingDown(windowId)
+  }
+
+  private isTabCoolingDown(tabId: number) {
+    const until = this.tabCooldownUntil.get(tabId)
+    return typeof until === 'number' && Date.now() < until
+  }
+
+  private logInfoOnce(message: string) {
+    const now = Date.now()
+    const last = this.errorLogTimestamps.get(message) ?? 0
+    if (now - last >= ERROR_COOLDOWN_MS) {
+      console.info(message)
+      this.errorLogTimestamps.set(message, now)
     }
   }
 }

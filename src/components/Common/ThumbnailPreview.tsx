@@ -11,10 +11,8 @@
 
 import React, { useState, useEffect } from 'react'
 
-import { ThumbnailService } from '../../services/ThumbnailService'
-
 interface ThumbnailPreviewProps {
-  tabId: string
+  tabId: number
   title: string
   url: string
   isHovering: boolean
@@ -23,6 +21,7 @@ interface ThumbnailPreviewProps {
 }
 
 const isHttpUrl = (url: string) => /^https?:\/\//i.test(url)
+const thumbnailCache = new Map<string, string>()
 
 export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
   tabId,
@@ -32,33 +31,54 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
   mouseX,
   mouseY
 }) => {
-  const [thumbnail, setThumbnail] = useState<string | null>(null)
+  const cacheKey = `${tabId}|${url}`
+  const [thumbnail, setThumbnail] = useState<string | null>(thumbnailCache.get(cacheKey) ?? null)
   const [loading, setLoading] = useState(false)
 
-  // Load thumbnail when hovering starts
   useEffect(() => {
-    if (isHovering) {
-      if (!isHttpUrl(url)) {
-        setThumbnail(null)
-        setLoading(false)
+    let cancelled = false
+    let timeoutId: number | null = null
+
+    const fetchThumbnail = () => {
+      setLoading(true)
+      chrome.runtime.sendMessage(
+        {
+          type: 'THUMBS_GET_LATEST',
+          payload: { tabId, url },
+        },
+        (response) => {
+          if (cancelled) return
+          const ok = response && response.type === 'THUMBS_GET_LATEST_OK'
+          const dataUrl = ok ? response.payload?.dataUrl : null
+          if (chrome.runtime.lastError || !dataUrl) {
+            setThumbnail(null)
+          } else {
+            thumbnailCache.set(cacheKey, dataUrl)
+            setThumbnail(dataUrl)
+          }
+          setLoading(false)
+        },
+      )
+    }
+
+    if (isHovering && isHttpUrl(url)) {
+      setLoading(false)
+      const cached = thumbnailCache.get(cacheKey)
+      if (cached) {
+        setThumbnail(cached)
         return
       }
-      setLoading(true)
-      ThumbnailService.getThumbnail(tabId)
-        .then(url => {
-          setThumbnail(url)
-          setLoading(false)
-        })
-        .catch(() => {
-          setThumbnail(null)
-          setLoading(false)
-        })
+      timeoutId = window.setTimeout(fetchThumbnail, 200)
     } else {
-      // Reset state when not hovering
       setThumbnail(null)
       setLoading(false)
     }
-  }, [isHovering, tabId])
+
+    return () => {
+      cancelled = true
+      if (timeoutId) window.clearTimeout(timeoutId)
+    }
+  }, [isHovering, tabId, url, cacheKey])
 
   // Don't render if not hovering
   if (!isHovering) return null
@@ -135,7 +155,7 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
         }}>
           <div>📷 No preview available</div>
           <div style={{fontSize: '10px', opacity: 0.8}}>
-            Thumbnails are captured when you use<br/>&quot;Capture All Thumbnails&quot; feature
+            Thumbnails are captured automatically while you browse.
           </div>
         </div>
       )}

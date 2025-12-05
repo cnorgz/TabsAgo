@@ -295,7 +295,7 @@ const TabManager: React.FC<TabManagerProps> = ({
       
       {hoveredTab && (
         <ThumbnailPreview
-          tabId={hoveredTab.id}
+          tabId={Number(hoveredTab.id)}
           title={tabs.find(t => t.id === hoveredTab.id)?.title || ''}
           url={tabs.find(t => t.id === hoveredTab.id)?.url || ''}
           isHovering={true}
@@ -308,4 +308,3 @@ const TabManager: React.FC<TabManagerProps> = ({
 }
 
 export default TabManager
-
