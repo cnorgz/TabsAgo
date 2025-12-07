@@ -407,23 +407,50 @@ export class CaptureScheduler {
   }
 
   private handleCaptureError(windowId: number, error: unknown) {
-    const message = typeof (error as any)?.message === 'string' ? (error as any).message : String(error)
-    if (/Either the '<all_urls>' or 'activeTab' permission is required/i.test(message)) {
-      this.setWindowCooldown(windowId)
-      this.logInfoOnce(`[CaptureScheduler] cooling down window ${windowId}: missing <all_urls>/activeTab permission (${message})`)
+    const message =
+      typeof (error as any)?.message === 'string'
+        ? (error as any).message
+        : String(error)
+
+    // Always cool down this window on any capture error to avoid hot-looping.
+    this.setWindowCooldown(windowId)
+
+    // Missing <all_urls>/activeTab permission:
+    if (/permission is required/i.test(message) && /activeTab/i.test(message)) {
+      this.logInfoOnce(
+        `[CaptureScheduler] cooling down window ${windowId}: missing host/activeTab permission (${message})`,
+      )
       return
     }
-    if (/Tabs cannot be edited right now \(user may be dragging a tab\)\./i.test(message)) {
-      this.setWindowCooldown(windowId)
-      this.logInfoOnce(`[CaptureScheduler] cooling down window ${windowId}: ${message}`)
+
+    // User dragging a tab, or similar transient edit-lock:
+    if (
+      /Tabs cannot be edited right now \(user may be dragging a tab\)\./i.test(
+        message,
+      )
+    ) {
+      this.logInfoOnce(
+        `[CaptureScheduler] cooling down window ${windowId}: ${message}`,
+      )
       return
     }
-    if (/edited right now|No current window|Could not establish connection|Receiving end does not exist/i.test(message)) {
-      this.setWindowCooldown(windowId)
-      this.logInfoOnce(`[CaptureScheduler] cooling down window ${windowId}: ${message}`)
+
+    // Generic connection/tab lifecycle problems:
+    if (
+      /edited right now|No current window|Could not establish connection|Receiving end does not exist/i.test(
+        message,
+      )
+    ) {
+      this.logInfoOnce(
+        `[CaptureScheduler] cooling down window ${windowId}: ${message}`,
+      )
       return
     }
-    this.logInfoOnce(`[CaptureScheduler] capture error (no cooldown): ${message}`)
+
+    // Fallback: still log, but don't spam.
+    this.logInfoOnce(
+      `[CaptureScheduler] capture error (no specific match): ${message}`,
+    )
   }
 
   private isTabEligible(tab: chrome.tabs.Tab) {
