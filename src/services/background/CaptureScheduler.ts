@@ -408,6 +408,11 @@ export class CaptureScheduler {
 
   private handleCaptureError(windowId: number, error: unknown) {
     const message = typeof (error as any)?.message === 'string' ? (error as any).message : String(error)
+    if (/Either the '<all_urls>' or 'activeTab' permission is required/i.test(message)) {
+      this.setWindowCooldown(windowId)
+      this.logInfoOnce(`[CaptureScheduler] cooling down window ${windowId}: missing <all_urls>/activeTab permission (${message})`)
+      return
+    }
     if (/Tabs cannot be edited right now \(user may be dragging a tab\)\./i.test(message)) {
       this.setWindowCooldown(windowId)
       this.logInfoOnce(`[CaptureScheduler] cooling down window ${windowId}: ${message}`)

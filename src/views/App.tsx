@@ -50,8 +50,7 @@ function App() {
     const saved = localStorage.getItem('tabsago_thumbnail_quality')
     return saved ? parseInt(saved, 10) : 70
   })
-  const [capturingThumbnails, setCapturingThumbnails] = useState<boolean>(false)
-  const [captureProgress, setCaptureProgress] = useState<string>('')
+  // Manual capture removed; keep only toggle and cache clear controls
 
   // Persist sort preference
   useEffect(() => {
@@ -242,37 +241,6 @@ function App() {
   }
 
   // Thumbnail operations
-  const captureThumbnailsNow = async () => {
-    if (capturingThumbnails) return
-    
-    setCapturingThumbnails(true)
-    setCaptureProgress('Starting capture...')
-    
-    try {
-      const stats = await ThumbnailService.captureAllTabsInWindow(
-        (current, total) => {
-          setCaptureProgress(`Capturing ${current} of ${total} tabs...`)
-        },
-        thumbnailQuality
-      )
-      
-      setCaptureProgress(
-        `Complete! ${stats.success} captured, ${stats.failed} failed, ${stats.skipped} skipped.`
-      )
-      
-      setTimeout(() => {
-        setCapturingThumbnails(false)
-        setCaptureProgress('')
-      }, 3000)
-    } catch (err) {
-      console.error('Failed to capture thumbnails:', err)
-      setError('Failed to capture thumbnails.')
-      setTimeout(() => setError(null), 3000)
-      setCapturingThumbnails(false)
-      setCaptureProgress('')
-    }
-  }
-
   const clearThumbnailCache = async () => {
     try {
       await ThumbnailService.clearAllThumbnails()
@@ -404,10 +372,7 @@ function App() {
               setThumbnailsEnabled={updateThumbnailsEnabled}
               thumbnailQuality={thumbnailQuality}
               setThumbnailQuality={setThumbnailQuality}
-              captureThumbnailsNow={captureThumbnailsNow}
               clearThumbnailCache={clearThumbnailCache}
-              capturingThumbnails={capturingThumbnails}
-              captureProgress={captureProgress}
             />
             <ThemeToggle theme={theme} setTheme={setTheme} />
           </div>
@@ -593,10 +558,7 @@ interface HelpModalProps {
   setThumbnailsEnabled: (value: boolean) => void
   thumbnailQuality: number
   setThumbnailQuality: (value: number) => void
-  captureThumbnailsNow: () => Promise<void>
   clearThumbnailCache: () => Promise<void>
-  capturingThumbnails: boolean
-  captureProgress: string
 }
 
 function HelpModal({
@@ -604,10 +566,7 @@ function HelpModal({
   setThumbnailsEnabled,
   thumbnailQuality,
   setThumbnailQuality,
-  captureThumbnailsNow,
-  clearThumbnailCache,
-  capturingThumbnails,
-  captureProgress
+  clearThumbnailCache
 }: HelpModalProps) {
   const [isOpen, setIsOpen] = React.useState(false)
 
@@ -735,51 +694,21 @@ function HelpModal({
             <div style={{display: 'flex', gap: '8px', marginTop: '8px'}}>
               <button
                 className="btn"
-                onClick={captureThumbnailsNow}
-                disabled={capturingThumbnails || !thumbnailsEnabled}
-                style={{
-                  fontSize: '12px',
-                  padding: '6px 12px',
-                  opacity: (capturingThumbnails || !thumbnailsEnabled) ? 0.5 : 1,
-                  cursor: (capturingThumbnails || !thumbnailsEnabled) ? 'not-allowed' : 'pointer',
-                  background: 'var(--panel)',
-                  border: '1px solid var(--border)'
-                }}
-              >
-                Refresh thumbnails (optional)
-              </button>
-              <button
-                className="btn"
                 onClick={clearThumbnailCache}
-                disabled={capturingThumbnails}
                 style={{
                   fontSize: '12px',
-                  padding: '6px 12px',
-                  opacity: capturingThumbnails ? 0.5 : 1,
-                  cursor: capturingThumbnails ? 'not-allowed' : 'pointer'
+                  padding: '6px 12px'
                 }}
               >
                 🗑️ Clear Cache
               </button>
             </div>
-            
-              {captureProgress && (
-                <div style={{
-                  fontSize: '12px',
-                  color: 'var(--accent)',
-                  padding: '8px',
-                background: 'var(--bg)',
-                borderRadius: '6px',
-                border: '1px solid var(--border)'
-              }}>
-          {captureProgress}
-              </div>
-              )}
-            </div>
             <p style={{marginTop: '12px', color: 'var(--muted)', fontSize: '11px'}}>
-            💡 <strong>How it works:</strong> Thumbnails are captured automatically while you browse when previews are enabled.
-            Use the refresh option only if a preview looks stale. Hover over any tab in List view to see its preview.
+              💡 <strong>How it works:</strong> Thumbnails are captured automatically while you browse when previews are enabled.
+              Hover over any tab in List view to see its preview. Use Clear Cache if you want to wipe stored thumbnails.
             </p>
+
+          </div>
 
           <p style={{marginTop: '16px', color: 'var(--muted)'}}>
             <strong>Note:</strong> Arrow key navigation works in List view. Keyboard shortcuts must be 

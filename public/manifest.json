@@ -22,8 +22,7 @@
     "idle"
   ],
   "host_permissions": [
-    "http://*/*",
-    "https://*/*"
+    "<all_urls>"
   ],
   "content_scripts": [
     {

@@ -58,6 +58,7 @@ export class ThumbnailService {
    * @param quality - JPEG quality (20-100, default 70)
    * @returns Statistics object with success/failed/skipped counts
    */
+  // Deprecated: manual capture has been removed from the UI. Retained for potential debugging only.
   static async captureAllTabsInWindow(
     onProgress?: (current: number, total: number) => void,
     quality: number = 70
@@ -265,4 +266,3 @@ export class ThumbnailService {
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
   }
 }
-
