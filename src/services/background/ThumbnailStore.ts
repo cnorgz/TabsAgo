@@ -3,9 +3,10 @@ import { CaptureMetadata, LegacyThumbnailEntry, ThumbnailRecord } from '../../ty
 const DB_NAME = 'tabsago-thumbnails'
 const STORE_NAME = 'thumbnails'
 const DB_VERSION = 1
-const MAX_PER_KEY = 2
-const TTL_MS = 14 * 24 * 60 * 60 * 1000
-const GLOBAL_CAP = 500
+// Default retention favors long-lived tab organization; make configurable later if storage becomes a concern.
+const TTL_MS = 365 * 24 * 60 * 60 * 1000
+const GLOBAL_CAP = 600
+const MAX_PER_KEY = 1
 const TARGET_WIDTH = 800
 const TARGET_HEIGHT = 500
 const TARGET_QUALITY = 0.6

@@ -290,3 +290,47 @@ async function blobToDataUrl(blob: Blob) {
     reader.readAsDataURL(blob)
   })
 }
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (!message || message.type !== 'DEBUG_CAPTURE_ACTIVE') return
+
+  ;(async () => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+      if (!tab || tab.id == null || tab.windowId == null || !tab.url) {
+        sendResponse({ ok: false, error: 'No active tab/window to capture' })
+        return
+      }
+
+      if (!/^https?:\/\//i.test(tab.url)) {
+        sendResponse({ ok: false, error: `Unsupported URL: ${tab.url}` })
+        return
+      }
+
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        chrome.tabs.captureVisibleTab(tab.windowId!, { format: 'jpeg', quality: 80 }, (res) => {
+          if (chrome.runtime.lastError || !res) {
+            reject(chrome.runtime.lastError ?? new Error('captureVisibleTab failed'))
+            return
+          }
+          resolve(res)
+        })
+      })
+
+      await thumbnailStore.putCapture({
+        tabId: tab.id!,
+        windowId: tab.windowId!,
+        url: tab.url,
+        kind: 'final',
+        dataUrl,
+      })
+
+      sendResponse({ ok: true })
+    } catch (err: any) {
+      console.error('DEBUG_CAPTURE_ACTIVE failed', err)
+      sendResponse({ ok: false, error: String(err?.message ?? err) })
+    }
+  })()
+
+  return true
+})

@@ -336,6 +336,7 @@ export class CaptureScheduler {
       return true
     } catch (error) {
       console.warn('Capture failed', error)
+      this.handleCaptureError(request.windowId, error)
       return false
     }
   }
@@ -407,12 +408,17 @@ export class CaptureScheduler {
 
   private handleCaptureError(windowId: number, error: unknown) {
     const message = typeof (error as any)?.message === 'string' ? (error as any).message : String(error)
+    if (/Tabs cannot be edited right now \(user may be dragging a tab\)\./i.test(message)) {
+      this.setWindowCooldown(windowId)
+      this.logInfoOnce(`[CaptureScheduler] cooling down window ${windowId}: ${message}`)
+      return
+    }
     if (/edited right now|No current window|Could not establish connection|Receiving end does not exist/i.test(message)) {
       this.setWindowCooldown(windowId)
       this.logInfoOnce(`[CaptureScheduler] cooling down window ${windowId}: ${message}`)
-    } else {
-      console.warn('Capture failed', error)
+      return
     }
+    this.logInfoOnce(`[CaptureScheduler] capture error (no cooldown): ${message}`)
   }
 
   private isTabEligible(tab: chrome.tabs.Tab) {

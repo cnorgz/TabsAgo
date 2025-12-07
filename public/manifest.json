@@ -22,12 +22,14 @@
     "idle"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "http://*/*",
+    "https://*/*"
   ],
   "content_scripts": [
     {
       "matches": [
-        "<all_urls>"
+        "http://*/*",
+        "https://*/*"
       ],
       "js": [
         "content/viewport.js"
@@ -47,4 +49,3 @@
   "web_accessible_resources": [],
   "icons": {}
 }
-
