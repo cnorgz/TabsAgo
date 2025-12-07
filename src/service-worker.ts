@@ -145,52 +145,87 @@ chrome.windows.onRemoved.addListener(async () => {
 })
 
 chrome.tabs.onActivated.addListener((activeInfo) => {
-  if (!autoCaptureEnabled) return
-  captureScheduler.handleTabActivated(activeInfo).catch((error) => {
-    console.error('Failed to process tab activation', error)
-  })
+  if (!autoCaptureEnabled) {
+    return
+  }
+
+  captureScheduler
+    .handleTabActivated(activeInfo)
+    .catch((error) => {
+      console.error('Failed to process tab activation', error)
+    })
 })
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (!autoCaptureEnabled) return
-  captureScheduler.handleTabUpdated(tabId, changeInfo, tab).catch((error) => {
-    console.error('Failed to process tab update', error)
-  })
+  if (!autoCaptureEnabled) {
+    return
+  }
+
+  captureScheduler
+    .handleTabUpdated(tabId, changeInfo, tab)
+    .catch((error) => {
+      console.error('Failed to process tab update', error)
+    })
 })
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  if (!autoCaptureEnabled) return
-  captureScheduler.handleTabRemoved(tabId).catch((error) => {
-    console.error('Failed to cleanup removed tab', error)
-  })
+  if (!autoCaptureEnabled) {
+    return
+  }
+
+  captureScheduler
+    .handleTabRemoved(tabId)
+    .catch((error) => {
+      console.error('Failed to cleanup removed tab', error)
+    })
 })
 
 chrome.windows.onFocusChanged.addListener((windowId) => {
-  if (!autoCaptureEnabled) return
-  captureScheduler.handleWindowFocusChanged(windowId).catch((error) => {
-    console.error('Failed to process window focus change', error)
-  })
+  if (!autoCaptureEnabled) {
+    return
+  }
+
+  captureScheduler
+    .handleWindowFocusChanged(windowId)
+    .catch((error) => {
+      console.error('Failed to process window focus change', error)
+    })
 })
 
 chrome.webNavigation.onCommitted.addListener((details) => {
-  if (!autoCaptureEnabled) return
-  captureScheduler.handleNavigationCommitted(details).catch((error) => {
-    console.error('Failed to process navigation commit', error)
-  })
+  if (!autoCaptureEnabled) {
+    return
+  }
+
+  captureScheduler
+    .handleNavigationCommitted(details)
+    .catch((error) => {
+      console.error('Failed to process navigation commit', error)
+    })
 })
 
 chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
-  if (!autoCaptureEnabled) return
-  captureScheduler.handleHistoryStateUpdated(details).catch((error) => {
-    console.error('Failed to process history state update', error)
-  })
+  if (!autoCaptureEnabled) {
+    return
+  }
+
+  captureScheduler
+    .handleHistoryStateUpdated(details)
+    .catch((error) => {
+      console.error('Failed to process history state update', error)
+    })
 })
 
 chrome.webNavigation.onBeforeNavigate.addListener((details) => {
-  if (!autoCaptureEnabled) return
-  captureScheduler.handleBeforeNavigate(details).catch((error) => {
-    console.error('Failed to process before navigate', error)
-  })
+  if (!autoCaptureEnabled) {
+    return
+  }
+
+  captureScheduler
+    .handleBeforeNavigate(details)
+    .catch((error) => {
+      console.error('Failed to process before navigate', error)
+    })
 })
 
 async function initializeAutoCapturePref() {
