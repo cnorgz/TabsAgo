@@ -24,6 +24,7 @@ interface TabManagerProps {
   clearAll: () => Promise<void>
   exportTabs: () => Promise<void>
   importTabs: () => Promise<void>
+  thumbnailsEnabled: boolean
 }
 
 const TabManager: React.FC<TabManagerProps> = ({
@@ -45,7 +46,8 @@ const TabManager: React.FC<TabManagerProps> = ({
   bulkRemove,
   clearAll,
   exportTabs,
-  importTabs
+  importTabs,
+  thumbnailsEnabled
 }) => {
   const [showDropdown, setShowDropdown] = React.useState(false)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -292,7 +294,7 @@ const TabManager: React.FC<TabManagerProps> = ({
         </ul>
       )}
       
-      {hoveredTab && (
+      {hoveredTab && thumbnailsEnabled && (
         <ThumbnailPreview
           tabId={Number(hoveredTab.id)}
           title={tabs.find(t => t.id === hoveredTab.id)?.title || ''}

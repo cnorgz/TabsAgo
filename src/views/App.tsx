@@ -469,6 +469,7 @@ function App() {
               clearAll={clearAll}
               exportTabs={exportTabs}
               importTabs={importTabs}
+              thumbnailsEnabled={thumbnailsEnabled}
             />
           ) : (
             <TabsView
@@ -491,6 +492,7 @@ function App() {
               clearAll={clearAll}
               exportTabs={exportTabs}
               importTabs={importTabs}
+              thumbnailsEnabled={thumbnailsEnabled}
             />
           )}
           {showRecentlyClosed && recentlyClosed.length > 0 && (

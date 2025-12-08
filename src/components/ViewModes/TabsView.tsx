@@ -23,6 +23,7 @@ interface TabsViewProps {
   clearAll: () => Promise<void>
   exportTabs: () => Promise<void>
   importTabs: () => Promise<void>
+  thumbnailsEnabled: boolean
 }
 
 const TabsView: React.FC<TabsViewProps> = ({
@@ -46,7 +47,8 @@ const TabsView: React.FC<TabsViewProps> = ({
   bulkRemove,
   clearAll,
   exportTabs,
-  importTabs
+  importTabs,
+  thumbnailsEnabled
 }) => {
   const [showDropdown, setShowDropdown] = React.useState(false)
   const [hoveredTab, setHoveredTab] = React.useState<{ id: string; x: number; y: number } | null>(null)
@@ -196,7 +198,7 @@ const TabsView: React.FC<TabsViewProps> = ({
         ))}
       </div>
       
-      {hoveredTab && (
+      {hoveredTab && thumbnailsEnabled && (
         <ThumbnailPreview
           tabId={Number(hoveredTab.id)}
           title={tabs.find(t => t.id === hoveredTab.id)?.title || ''}

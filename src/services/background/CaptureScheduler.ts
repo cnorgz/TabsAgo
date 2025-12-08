@@ -11,6 +11,7 @@ export class CaptureScheduler {
   private captureHandler?: (metadata: CaptureMetadata) => Promise<void> | void
   private autoCaptureEnabled = true
   private pendingCaptures = new Map<number, NodeJS.Timeout>()
+  private lastCaptureTimes = new Map<string, number>()
 
   async bootstrap() {
     // No-op for stateless scheduler
@@ -80,11 +81,18 @@ export class CaptureScheduler {
         return // User switched away
       }
 
-      // 2. Check freshness (Stateless check!)
+      // 2. Check freshness (Memory cache first)
+      const lastCaptured = this.lastCaptureTimes.get(url)
+      if (lastCaptured && (Date.now() - lastCaptured < CAPTURE_COOLDOWN_MS)) {
+        return
+      }
+
+      // 3. Check freshness (DB second - in case we restarted)
       const lastRecord = await thumbnailStore.getLatestRecord(tabId, url)
       if (lastRecord) {
         const age = Date.now() - lastRecord.capturedAt
         if (age < CAPTURE_COOLDOWN_MS) {
+           this.lastCaptureTimes.set(url, lastRecord.capturedAt) // Update memory cache
            return
         }
       }
@@ -104,6 +112,8 @@ export class CaptureScheduler {
       } else {
         await thumbnailStore.putCapture(metadata)
       }
+      
+      this.lastCaptureTimes.set(url, Date.now())
       
     } catch (error: unknown) {
         // Common errors: "Tabs cannot be edited...", "The tab was closed", etc.
