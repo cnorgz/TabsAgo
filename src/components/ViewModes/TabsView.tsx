@@ -177,7 +177,6 @@ const TabsView: React.FC<TabsViewProps> = ({
                onClick={() => openTab(item.id)}
                onMouseEnter={(e) => setHoveredTab({ id: item.id, x: e.clientX, y: e.clientY })}
                onMouseLeave={() => setHoveredTab(null)}
-               onMouseMove={(e) => hoveredTab?.id === item.id && setHoveredTab({ id: item.id, x: e.clientX, y: e.clientY })}
           >
             {item.favicon ? (
               <img src={item.favicon} alt="" className="tab-favicon" />

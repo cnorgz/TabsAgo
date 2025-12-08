@@ -267,7 +267,6 @@ const TabManager: React.FC<TabManagerProps> = ({
                 onClick={() => openTab(tab.id)}
                 onMouseEnter={(e) => setHoveredTab({ id: tab.id, x: e.clientX, y: e.clientY })}
                 onMouseLeave={() => setHoveredTab(null)}
-                onMouseMove={(e) => hoveredTab?.id === tab.id && setHoveredTab({ id: tab.id, x: e.clientX, y: e.clientY })}
                 style={{flex: 1, display: 'flex', alignItems: 'center', gap: '12px'}}
               >
                 {tab.favicon ? (
