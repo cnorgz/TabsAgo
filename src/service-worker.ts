@@ -93,7 +93,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     handleThumbnailRequest(message.payload, sender, sendResponse)
       .catch((error) => {
         console.error('Failed to handle thumbnail request', error)
-        sendResponse({ type: THUMBS_GET_LATEST_OK, payload: { items: [] } })
+        sendResponse({ type: THUMBS_GET_LATEST_OK, payload: { dataUrl: null } })
       })
     return true
   }
