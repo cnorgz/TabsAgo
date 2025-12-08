@@ -14,10 +14,27 @@ const TARGET_QUALITY = 0.6
 export class ThumbnailStore {
   private dbPromise: Promise<IDBDatabase> | null = null
   private migrationRan = false
+  private cache = new Map<string, ThumbnailRecord>() // LRU cache: key is URL, value is ThumbnailRecord
 
   async initialize() {
     await this.ensureDb()
     await this.runMigrationSafely()
+  }
+
+  // Helper to manage LRU cache
+  private addToCache(record: ThumbnailRecord) {
+    const key = record.url
+    // Delete if already exists to move to end (most recent)
+    if (this.cache.has(key)) {
+      this.cache.delete(key)
+    }
+    this.cache.set(key, record)
+
+    // Enforce size limit
+    if (this.cache.size > CACHE_SIZE) {
+      const oldestKey = this.cache.keys().next().value
+      this.cache.delete(oldestKey)
+    }
   }
 
   async putCapture(metadata: CaptureMetadata) {
@@ -37,6 +54,7 @@ export class ThumbnailStore {
         capturedAt: Date.now(),
       }
       await this.storeRecord(db, record)
+      this.addToCache(record) // Add to cache after successful storage
     } catch (error) {
       console.error('[ThumbnailStore] putCapture FAILED:', error)
     }
@@ -44,8 +62,16 @@ export class ThumbnailStore {
 
   async getLatest(tabId: number, url: string, limit = 2): Promise<ThumbnailRecord[]> {
     try {
-      if (!url) return [] // tabId can be 0 or -1, that's fine, we'll ignore it if needed
+      if (!url) return []
       
+      // Try to get from cache first
+      const cachedRecord = this.cache.get(url)
+      if (cachedRecord) {
+        // Move to end of LRU (most recently used)
+        this.addToCache(cachedRecord) 
+        return [cachedRecord]
+      }
+
       const db = await this.ensureDb()
       const items = await new Promise<ThumbnailRecord[]>((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, 'readonly')
@@ -53,7 +79,6 @@ export class ThumbnailStore {
         const index = store.index('capturedAt')
         const results: ThumbnailRecord[] = []
         
-        // We scan by time (newest first)
         const request = index.openCursor(null, 'prev')
         
         request.onsuccess = () => {
@@ -64,10 +89,6 @@ export class ThumbnailStore {
           }
           const value = cursor.value as ThumbnailRecord
           
-          // Logic:
-          // 1. If we have a valid tabId, prioritize exact match.
-          // 2. If we don't have a valid tabId (e.g. 0), or if we just want *any* thumbnail for this URL,
-          //    we accept it if the URL matches.
           if (value.url === url) {
              results.push(value)
              if (results.length >= limit) {
@@ -75,12 +96,15 @@ export class ThumbnailStore {
                return
              }
           }
-          
           cursor.continue()
         }
         request.onerror = () => reject(request.error)
         tx.onerror = () => reject(tx.error)
       })
+      // If we found an item, add it to cache
+      if (items.length > 0) {
+        this.addToCache(items[0])
+      }
       return items
     } catch (error) {
       console.error('[ThumbnailStore] getLatest FAILED:', error)
@@ -102,6 +126,7 @@ export class ThumbnailStore {
         tx.oncomplete = () => resolve()
         tx.onerror = () => reject(tx.error)
       })
+      this.cache.clear() // Clear in-memory cache as well
     } catch (error) {
       console.warn('ThumbnailStore.clearAll failed', error)
     }
