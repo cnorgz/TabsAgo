@@ -12,6 +12,7 @@ const VPS_REQUEST = 'VPS_REQUEST'
 const VPS_RESTORE = 'VPS_RESTORE'
 const THUMBS_GET_LATEST = 'THUMBS_GET_LATEST'
 const THUMBS_GET_LATEST_OK = 'THUMBS_GET_LATEST_OK'
+const THUMBS_CLEAR_ALL = 'THUMBS_CLEAR_ALL'
 const VIEWPORT_KEY_PREFIX = 'vps'
 const AUTO_CAPTURE_PREF_KEY = PREF_KEYS.AUTO_THUMBNAIL_CAPTURE
 
@@ -54,10 +55,6 @@ captureScheduler.setCaptureHandler(async (metadata) => {
   await thumbnailStore.putCapture(metadata)
 })
 
-captureScheduler.bootstrap().catch((error) => {
-  console.error('CaptureScheduler bootstrap error', error)
-})
-
 initializeAutoCapturePref().catch((error) => {
   console.error('Failed to initialize auto capture pref', error)
 })
@@ -97,6 +94,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((error) => {
         console.error('Failed to handle thumbnail request', error)
         sendResponse({ type: THUMBS_GET_LATEST_OK, payload: { items: [] } })
+      })
+    return true
+  }
+  if (message?.type === THUMBS_CLEAR_ALL) {
+    thumbnailStore.clearAll()
+      .then(() => sendResponse({ success: true }))
+      .catch((error) => {
+        console.error('Failed to clear thumbnails', error)
+        sendResponse({ success: false, error: String(error) })
       })
     return true
   }
@@ -168,6 +174,14 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     .catch((error) => {
       console.error('Failed to process tab update', error)
     })
+})
+
+chrome.tabs.onActivated.addListener((activeInfo) => {
+  captureScheduler.handleTabActivated(activeInfo).catch((err) => console.error('onActivated error', err))
+})
+
+chrome.windows.onFocusChanged.addListener((windowId) => {
+  captureScheduler.handleWindowFocusChanged(windowId).catch((err) => console.error('onFocusChanged error', err))
 })
 
 async function initializeAutoCapturePref() {

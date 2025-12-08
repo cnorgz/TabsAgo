@@ -82,6 +82,20 @@ export class ThumbnailStore {
     return items[0] ?? null
   }
 
+  async clearAll() {
+    try {
+      const db = await this.ensureDb()
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite')
+        tx.objectStore(STORE_NAME).clear()
+        tx.oncomplete = () => resolve()
+        tx.onerror = () => reject(tx.error)
+      })
+    } catch (error) {
+      console.warn('ThumbnailStore.clearAll failed', error)
+    }
+  }
+
   private async ensureDb(): Promise<IDBDatabase> {
     if (this.dbPromise) return this.dbPromise
     this.dbPromise = new Promise((resolve, reject) => {

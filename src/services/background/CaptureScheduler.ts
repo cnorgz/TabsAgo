@@ -1,69 +1,19 @@
 import type { CaptureKind, CaptureMetadata } from '../../types/thumbnail'
 
-interface VisitEpoch {
-  tabId: number
-  url: string
-  epochStart: number
-  firstCompleted: boolean
-  finalCompleted: boolean
-  firstPending: boolean
-  finalPending: boolean
-}
+import { thumbnailStore } from './ThumbnailStore'
 
-interface CaptureRequest {
-  tabId: number
-  windowId: number
-  url: string
-  kind: CaptureKind
-}
-
-const GLOBAL_MIN_INTERVAL_MS = 1000
-const TAB_MIN_INTERVAL_MS = 2500
+const CAPTURE_COOLDOWN_MS = 1000 * 60 * 15 // 15 minutes
+const MIN_CAPTURE_DELAY_MS = 800
 const SUPPORTED_PROTOCOL = /^https?:\/\//i
-const WINDOW_COOLDOWN_MS = 3000
-const ERROR_COOLDOWN_MS = 10_000
+const QUALITY = 50
 
 export class CaptureScheduler {
-  private visitEpochs = new Map<number, VisitEpoch>()
-  private tabWindows = new Map<number, number>()
-  private activeTabsByWindow = new Map<number, number>()
-  private windowVisibility = new Map<
-    number,
-    { minimized: boolean; state?: 'normal' | 'minimized' | 'maximized' | 'fullscreen' | 'locked-fullscreen' }
-  >()
-  private captureQueue: CaptureRequest[] = []
-  private processingQueue = false
-  private focusedWindowId: number | null = null
-  private lastCaptureAt = 0
-  private tabCooldownUntil = new Map<number, number>()
-  private windowCooldownUntil = new Map<number, number>()
-  private errorLogTimestamps = new Map<string, number>()
   private captureHandler?: (metadata: CaptureMetadata) => Promise<void> | void
   private autoCaptureEnabled = true
+  private pendingCaptures = new Map<number, NodeJS.Timeout>()
 
   async bootstrap() {
-    try {
-      const windows = await chrome.windows.getAll({ populate: true })
-      for (const win of windows) {
-        if (win.id == null) continue
-        this.windowVisibility.set(win.id, { minimized: win.state === 'minimized', state: win.state })
-        if (win.focused) {
-          this.focusedWindowId = win.id
-        }
-        if (!win.tabs) continue
-        const activeTab = win.tabs.find((tab) => tab.active)
-        if (activeTab?.id != null) {
-          this.activeTabsByWindow.set(win.id, activeTab.id)
-          this.tabWindows.set(activeTab.id, win.id)
-          const url = activeTab.url ?? ''
-          if (url) {
-            this.startEpoch(activeTab.id, url)
-          }
-        }
-      }
-    } catch (error) {
-      console.warn('CaptureScheduler bootstrap failed', error)
-    }
+    // No-op for stateless scheduler
   }
 
   setCaptureHandler(handler: (metadata: CaptureMetadata) => Promise<void> | void) {
@@ -74,435 +24,103 @@ export class CaptureScheduler {
     this.autoCaptureEnabled = enabled
   }
 
-  async handleWindowFocusChanged(windowId: number) {
-    const previousFocused = this.focusedWindowId
-    if (windowId === chrome.windows.WINDOW_ID_NONE) {
-      this.focusedWindowId = null
-      if (previousFocused != null) {
-        const prevTabId = this.activeTabsByWindow.get(previousFocused)
-        if (prevTabId != null) {
-          await this.scheduleFinalCapture(prevTabId)
-        }
-      }
-      return
-    }
-
-    await this.refreshWindowState(windowId)
-    this.focusedWindowId = windowId
-    if (previousFocused != null && previousFocused !== windowId) {
-      const prevTabId = this.activeTabsByWindow.get(previousFocused)
-      if (prevTabId != null) {
-        await this.scheduleFinalCapture(prevTabId)
-      }
+  async handleTabUpdated(tabId: number, changeInfo: chrome.tabs.OnUpdatedInfo, tab: chrome.tabs.Tab) {
+    if (!this.autoCaptureEnabled) return
+    if (changeInfo.status === 'complete' && tab.active) {
+      this.scheduleCapture(tab.windowId, tabId, tab.url, 'first')
     }
   }
 
   async handleTabActivated(activeInfo: chrome.tabs.OnActivatedInfo) {
-    const prevTabId = this.activeTabsByWindow.get(activeInfo.windowId)
-    if (prevTabId != null && prevTabId !== activeInfo.tabId) {
-      await this.scheduleFinalCapture(prevTabId)
-    }
-
-    this.activeTabsByWindow.set(activeInfo.windowId, activeInfo.tabId)
-    this.tabWindows.set(activeInfo.tabId, activeInfo.windowId)
-    await this.ensureEpochFromTab(activeInfo.tabId)
-  }
-
-  async handleTabUpdated(tabId: number, changeInfo: chrome.tabs.OnUpdatedInfo, tab?: chrome.tabs.Tab) {
-    if (tab?.windowId != null) {
-      this.tabWindows.set(tabId, tab.windowId)
-    }
-    const updatedUrl = changeInfo.url ?? tab?.url
-    if (updatedUrl) {
-      this.updateEpochUrl(tabId, updatedUrl)
-    }
-    if (changeInfo.status === 'complete') {
-      await this.scheduleFirstCapture(tabId)
-    }
-  }
-
-  async handleNavigationCommitted(details: chrome.webNavigation.WebNavigationTransitionCallbackDetails) {
-    if (details.frameId !== 0) return
-    this.startEpoch(details.tabId, details.url)
-  }
-
-  async handleHistoryStateUpdated(details: chrome.webNavigation.WebNavigationTransitionCallbackDetails) {
-    if (details.frameId !== 0) return
-    await this.scheduleFinalCapture(details.tabId)
-    this.startEpoch(details.tabId, details.url)
-    setTimeout(() => {
-      void this.scheduleFirstCapture(details.tabId)
-    }, 100)
-  }
-
-  async handleBeforeNavigate(details: chrome.webNavigation.WebNavigationFramedCallbackDetails) {
-    if (details.frameId !== 0) return
-    await this.scheduleFinalCapture(details.tabId)
-  }
-
-  async handleTabRemoved(tabId: number) {
-    this.visitEpochs.delete(tabId)
-    const windowId = this.tabWindows.get(tabId)
-    this.tabWindows.delete(tabId)
-    if (windowId != null) {
-      const activeTab = this.activeTabsByWindow.get(windowId)
-      if (activeTab === tabId) {
-        this.activeTabsByWindow.delete(windowId)
-      }
-    }
-  }
-
-  private startEpoch(tabId: number, url: string) {
-    if (!url || !this.isSupportedUrl(url)) {
-      this.visitEpochs.delete(tabId)
-      return
-    }
-    const epoch: VisitEpoch = {
-      tabId,
-      url,
-      epochStart: Date.now(),
-      firstCompleted: false,
-      finalCompleted: false,
-      firstPending: false,
-      finalPending: false,
-    }
-    this.visitEpochs.set(tabId, epoch)
-  }
-
-  private updateEpochUrl(tabId: number, url: string) {
-    if (!url || !this.isSupportedUrl(url)) {
-      this.visitEpochs.delete(tabId)
-      return
-    }
-    const epoch = this.visitEpochs.get(tabId)
-    if (!epoch) {
-      this.startEpoch(tabId, url)
-      return
-    }
-    epoch.url = url
-  }
-
-  private async ensureEpochFromTab(tabId: number) {
-    const epoch = this.visitEpochs.get(tabId)
-    if (epoch?.url) return
-    try {
-      const tab = await chrome.tabs.get(tabId)
-      if (tab.url) {
-        this.startEpoch(tabId, tab.url)
-      }
-      if (tab.windowId != null) {
-        this.tabWindows.set(tabId, tab.windowId)
-      }
-    } catch (error) {
-      console.warn('Failed to ensure epoch for tab', tabId, error)
-    }
-  }
-
-  private async refreshWindowState(windowId: number) {
-    try {
-      const win = await chrome.windows.get(windowId)
-      this.windowVisibility.set(windowId, { minimized: win.state === 'minimized', state: win.state })
-    } catch (error) {
-      console.warn('Unable to inspect window state', windowId, error)
-      this.windowVisibility.set(windowId, { minimized: false, state: 'normal' as chrome.windows.WindowState })
-    }
-  }
-
-  private isWindowEligible(windowId: number | undefined) {
-    if (windowId == null || windowId === chrome.windows.WINDOW_ID_NONE) return false
-    if (this.focusedWindowId == null) return false
-    if (this.focusedWindowId !== windowId) return false
-    const visibility = this.windowVisibility.get(windowId)
-    if (!visibility || visibility.minimized || visibility.state !== 'normal') return false
-    if (this.isWindowCoolingDown(windowId)) return false
-    return true
-  }
-
-  private async scheduleFirstCapture(tabId: number) {
-    const epoch = this.visitEpochs.get(tabId)
-    if (!epoch || epoch.firstCompleted || epoch.firstPending || !this.isSupportedUrl(epoch.url)) return
-    if (!(await this.ensureTabActive(tabId))) return
-    epoch.firstPending = true
-    const windowId = this.tabWindows.get(tabId)
-    if (!this.canCaptureWindow(windowId) || this.isTabCoolingDown(tabId)) {
-      epoch.firstPending = false
-      return
-    }
-    this.enqueueCapture({ tabId, windowId: windowId!, url: epoch.url, kind: 'first' })
-  }
-
-  private async scheduleFinalCapture(tabId: number) {
-    const epoch = this.visitEpochs.get(tabId)
-    if (!epoch || epoch.finalCompleted || epoch.finalPending || !this.isSupportedUrl(epoch.url)) return
-    if (!(await this.ensureTabActive(tabId))) return
-    epoch.finalPending = true
-    const windowId = this.tabWindows.get(tabId)
-    if (!this.canCaptureWindow(windowId) || this.isTabCoolingDown(tabId)) {
-      epoch.finalPending = false
-      return
-    }
-    this.enqueueCapture({ tabId, windowId: windowId!, url: epoch.url, kind: 'final' })
-  }
-
-  private enqueueCapture(request: CaptureRequest) {
     if (!this.autoCaptureEnabled) return
-    const exists = this.captureQueue.some((queued) => queued.tabId === request.tabId && queued.kind === request.kind)
-    if (exists) return
-    this.captureQueue.push(request)
-    this.processQueue().catch((error) => {
-      console.error('Capture queue failure', error)
-    })
-  }
-
-  private async processQueue() {
-    if (this.processingQueue) return
-    this.processingQueue = true
-    while (this.captureQueue.length > 0) {
-      const request = this.captureQueue.shift()
-      if (!request) {
-        break
-      }
-      const epoch = this.visitEpochs.get(request.tabId)
-      if (!epoch) {
-        continue
-      }
-      if (!this.isWindowEligible(request.windowId)) {
-        this.resetPending(epoch, request.kind)
-        continue
-      }
-      const now = Date.now()
-      const elapsed = now - this.lastCaptureAt
-      if (elapsed < GLOBAL_MIN_INTERVAL_MS) {
-        await this.delay(GLOBAL_MIN_INTERVAL_MS - elapsed)
-      }
-      const success = await this.executeCapture(request)
-      const completedAt = Date.now()
-      this.lastCaptureAt = completedAt
-      if (success) {
-        this.tabCooldownUntil.set(request.tabId, completedAt + TAB_MIN_INTERVAL_MS)
-      }
-      if (success) {
-        this.markCompleted(epoch, request.kind)
-      } else {
-        this.resetPending(epoch, request.kind)
-      }
-    }
-    this.processingQueue = false
-  }
-
-  private markCompleted(epoch: VisitEpoch, kind: CaptureKind) {
-    if (kind === 'first') {
-      epoch.firstCompleted = true
-      epoch.firstPending = false
-    } else {
-      epoch.finalCompleted = true
-      epoch.finalPending = false
-    }
-  }
-
-  private resetPending(epoch: VisitEpoch, kind: CaptureKind) {
-    if (kind === 'first') {
-      epoch.firstPending = false
-    } else {
-      epoch.finalPending = false
-    }
-  }
-
-  private async executeCapture(request: CaptureRequest) {
     try {
-      const currentActive = this.activeTabsByWindow.get(request.windowId)
-      if (currentActive !== request.tabId) {
-        return false
+      const tab = await chrome.tabs.get(activeInfo.tabId)
+      if (tab.status === 'complete' && tab.active) {
+        // We use 'final' here as a legacy indicator for "update", or just to refresh stale thumbs
+        this.scheduleCapture(activeInfo.windowId, activeInfo.tabId, tab.url, 'final')
       }
-      if (this.isTabCoolingDown(request.tabId)) {
-        return false
+    } catch {
+      // Tab might have closed immediately
+    }
+  }
+
+  async handleWindowFocusChanged(windowId: number) {
+    if (windowId === chrome.windows.WINDOW_ID_NONE || !this.autoCaptureEnabled) return
+    try {
+      const tabs = await chrome.tabs.query({ windowId, active: true })
+      const tab = tabs[0]
+      if (tab && tab.id && tab.status === 'complete') {
+        this.scheduleCapture(windowId, tab.id, tab.url, 'final')
       }
-      const dataUrl = await this.captureVisibleWithRetry(request.windowId, 80)
+    } catch {
+      // ignore
+    }
+  }
+
+  private scheduleCapture(windowId: number, tabId: number, url: string | undefined, kind: CaptureKind) {
+    if (this.pendingCaptures.has(tabId)) {
+      clearTimeout(this.pendingCaptures.get(tabId))
+    }
+
+    const timeout = setTimeout(() => {
+      this.pendingCaptures.delete(tabId)
+      void this.executeCapture(windowId, tabId, url, kind)
+    }, MIN_CAPTURE_DELAY_MS)
+
+    this.pendingCaptures.set(tabId, timeout)
+  }
+
+  private async executeCapture(windowId: number, tabId: number, url: string | undefined, kind: CaptureKind) {
+    if (!url || !SUPPORTED_PROTOCOL.test(url)) return
+
+    try {
+      // 1. Check if tab is still active and valid
+      const tab = await chrome.tabs.get(tabId)
+      if (!tab.active || tab.windowId !== windowId || tab.url !== url) {
+        return // User switched away
+      }
+
+      // 2. Check freshness (Stateless check!)
+      // If we have a very recent capture, skip unless it's a "final" (forced update) or different URL
+      // Actually, even for 'final', we don't want to spam if we just captured 5 seconds ago.
+      const lastRecord = await thumbnailStore.getLatestRecord(tabId, url)
+      if (lastRecord) {
+        const age = Date.now() - lastRecord.capturedAt
+        // If it's fresh enough (< 15 mins), skip.
+        // But if it's a 'first' capture attempt and we already have one from < 15 mins, skip.
+        if (age < CAPTURE_COOLDOWN_MS) {
+           return
+        }
+      }
+
+      // 3. Capture
+      // Ensure the window is focused or at least we can capture it. 
+      // captureVisibleTab works on the *active* tab of the *specified* window.
+      // We already checked tab.active above.
+      
+      const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: 'jpeg', quality: QUALITY })
+
       const metadata: CaptureMetadata = {
-        tabId: request.tabId,
-        windowId: request.windowId,
-        url: request.url,
-        kind: request.kind,
+        tabId,
+        windowId,
+        url,
+        kind,
         dataUrl,
       }
+
       if (this.captureHandler) {
         await this.captureHandler(metadata)
+      } else {
+        await thumbnailStore.putCapture(metadata)
       }
-      this.logInfoOnce(
-        `[CaptureScheduler] captured thumbnail for ${request.url} (tabId=${request.tabId}, windowId=${request.windowId})`,
-      )
-      console.info('[CaptureScheduler]', request.kind, 'capture scheduled for', request.tabId, request.url)
-      try {
-        await chrome.runtime.sendMessage({
-          type: 'CAPTURE_SCHEDULED',
-          kind: request.kind,
-          tabId: request.tabId,
-          url: request.url,
-        })
-      } catch (error) {
-        console.debug('CAPTURE_SCHEDULED message not handled', error)
-      }
-      return true
-    } catch (error) {
-      console.warn('Capture failed', error)
-      this.handleCaptureError(request.windowId, error)
-      return false
-    }
-  }
-
-  private async ensureTabActive(tabId: number) {
-    let windowId = this.tabWindows.get(tabId)
-    if (windowId == null) {
-      try {
-        const tab = await chrome.tabs.get(tabId)
-        if (tab.windowId != null) {
-          this.tabWindows.set(tabId, tab.windowId)
-          if (tab.active) {
-            this.activeTabsByWindow.set(tab.windowId, tabId)
-          }
-          windowId = tab.windowId
-          if (!this.isTabEligible(tab) || !this.isWindowEligible(windowId)) {
-            return false
-          }
-          return true
+      
+    } catch (error: unknown) {
+        // Common errors: "Tabs cannot be edited...", "The tab was closed", etc.
+        // We just ignore them.
+        const msg = error instanceof Error ? error.message : String(error)
+        if (!msg.includes('closed') && !msg.includes('drag')) {
+             console.debug('Capture failed', msg)
         }
-      } catch {
-        return false
-      }
-    }
-    if (windowId == null || !this.isWindowEligible(windowId)) {
-      return false
-    }
-    const activeTabId = this.activeTabsByWindow.get(windowId)
-    if (activeTabId !== tabId) {
-      return false
-    }
-    try {
-      const tab = await chrome.tabs.get(tabId)
-      return this.isTabEligible(tab)
-    } catch {
-      return false
-    }
-  }
-
-  private delay(ms: number) {
-    return new Promise<void>((resolve) => setTimeout(resolve, ms))
-  }
-
-  private async captureVisibleWithRetry(windowId: number, quality: number, maxAttempts = 5): Promise<string> {
-    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      try {
-        const dataUrl = await new Promise<string>((resolve, reject) => {
-          chrome.tabs.captureVisibleTab(windowId, { format: 'jpeg', quality }, (res) => {
-            if (chrome.runtime.lastError || !res) {
-              reject(chrome.runtime.lastError ?? new Error('captureVisibleTab failed'))
-              return
-            }
-            resolve(res)
-          })
-        })
-        return dataUrl
-      } catch (error: any) {
-        const message = typeof error?.message === 'string' ? error.message : String(error)
-        if (/Tabs cannot be edited right now \(user may be dragging a tab\)\./i.test(message) && attempt < maxAttempts - 1) {
-          await this.delay(50 * (attempt + 1))
-          continue
-        }
-        throw new Error(`captureVisibleTab failed${attempt > 0 ? ' after retries' : ''}: ${message}`)
-      }
-    }
-    throw new Error('captureVisibleTab failed after retries')
-  }
-
-  private isSupportedUrl(url: string) {
-    return SUPPORTED_PROTOCOL.test(url)
-  }
-
-  private isWindowCoolingDown(windowId: number | undefined) {
-    if (windowId == null) return false
-    const until = this.windowCooldownUntil.get(windowId)
-    return typeof until === 'number' && Date.now() < until
-  }
-
-  private setWindowCooldown(windowId: number) {
-    this.windowCooldownUntil.set(windowId, Date.now() + WINDOW_COOLDOWN_MS)
-  }
-
-  private handleCaptureError(windowId: number, error: unknown) {
-    const message =
-      typeof (error as any)?.message === 'string'
-        ? (error as any).message
-        : String(error)
-
-    // Always cool down this window on any capture error to avoid hot-looping.
-    this.setWindowCooldown(windowId)
-
-    if (/after retries/i.test(message)) {
-      this.logInfoOnce(`[CaptureScheduler] giving up after retries for window ${windowId}: ${message}`)
-      return
-    }
-
-    // Missing <all_urls>/activeTab permission:
-    if (/permission is required/i.test(message) && /activeTab/i.test(message)) {
-      this.logInfoOnce(
-        `[CaptureScheduler] cooling down window ${windowId}: missing host/activeTab permission (${message})`,
-      )
-      return
-    }
-
-    // User dragging a tab, or similar transient edit-lock:
-    if (
-      /Tabs cannot be edited right now \(user may be dragging a tab\)\./i.test(
-        message,
-      )
-    ) {
-      this.logInfoOnce(
-        `[CaptureScheduler] cooling down window ${windowId}: ${message}`,
-      )
-      return
-    }
-
-    // Generic connection/tab lifecycle problems:
-    if (
-      /edited right now|No current window|Could not establish connection|Receiving end does not exist/i.test(
-        message,
-      )
-    ) {
-      this.logInfoOnce(
-        `[CaptureScheduler] cooling down window ${windowId}: ${message}`,
-      )
-      return
-    }
-
-    // Fallback: still log, but don't spam.
-    this.logInfoOnce(
-      `[CaptureScheduler] capture error (no specific match): ${message}`,
-    )
-  }
-
-  private isTabEligible(tab: chrome.tabs.Tab) {
-    if (!tab.url || !this.isSupportedUrl(tab.url)) return false
-    if (tab.status && tab.status !== 'complete') return false
-    if (tab.discarded) return false
-    if (tab.audible) return false
-    return true
-  }
-
-  private canCaptureWindow(windowId: number | undefined) {
-    return windowId != null && windowId !== chrome.windows.WINDOW_ID_NONE && !this.isWindowCoolingDown(windowId)
-  }
-
-  private isTabCoolingDown(tabId: number) {
-    const until = this.tabCooldownUntil.get(tabId)
-    return typeof until === 'number' && Date.now() < until
-  }
-
-  private logInfoOnce(message: string) {
-    const now = Date.now()
-    const last = this.errorLogTimestamps.get(message) ?? 0
-    if (now - last >= ERROR_COOLDOWN_MS) {
-      console.info(message)
-      this.errorLogTimestamps.set(message, now)
     }
   }
 }

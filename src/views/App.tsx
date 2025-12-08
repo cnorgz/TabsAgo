@@ -12,7 +12,6 @@ import { StorageService } from '../services/StorageService'
 import { ExportService } from '../services/ExportService'
 import { SessionSafetyService } from '../services/SessionSafetyService'
 import { RecentlyClosedService, RecentlyClosedSession } from '../services/RecentlyClosedService'
-import { ThumbnailService } from '../services/ThumbnailService'
 import { TabItem } from '../types/Tab'
 
 const AUTO_CAPTURE_PREF_KEY = PREF_KEYS.AUTO_THUMBNAIL_CAPTURE
@@ -243,7 +242,17 @@ function App() {
   // Thumbnail operations
   const clearThumbnailCache = async () => {
     try {
-      await ThumbnailService.clearAllThumbnails()
+      await new Promise<void>((resolve, reject) => {
+        chrome.runtime.sendMessage({ type: 'THUMBS_CLEAR_ALL' }, (response) => {
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError)
+          } else if (response && response.success) {
+            resolve()
+          } else {
+            reject(new Error(response?.error || 'Unknown error'))
+          }
+        })
+      })
       setError('Thumbnail cache cleared successfully.')
       setTimeout(() => setError(null), 2000)
     } catch (err) {
