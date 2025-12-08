@@ -107,6 +107,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   if (Object.prototype.hasOwnProperty.call(changes, AUTO_CAPTURE_PREF_KEY)) {
     const change = changes[AUTO_CAPTURE_PREF_KEY]
     autoCaptureEnabled = change.newValue !== false
+    captureScheduler.setAutoCaptureEnabled(autoCaptureEnabled)
   }
 })
 
@@ -144,20 +145,21 @@ chrome.windows.onRemoved.addListener(async () => {
   }
 })
 
-chrome.tabs.onActivated.addListener((activeInfo) => {
-  if (!autoCaptureEnabled) {
-    return
-  }
-
-  captureScheduler
-    .handleTabActivated(activeInfo)
-    .catch((error) => {
-      console.error('Failed to process tab activation', error)
-    })
-})
+function isHttpUrl(url?: string) {
+  return typeof url === 'string' && /^https?:\/\//i.test(url)
+}
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (!autoCaptureEnabled) {
+    return
+  }
+  if (changeInfo.status !== 'complete') {
+    return
+  }
+  if (!tab?.active) {
+    return
+  }
+  if (!isHttpUrl(tab.url)) {
     return
   }
 
@@ -168,74 +170,16 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     })
 })
 
-chrome.tabs.onRemoved.addListener((tabId) => {
-  if (!autoCaptureEnabled) {
-    return
-  }
-
-  captureScheduler
-    .handleTabRemoved(tabId)
-    .catch((error) => {
-      console.error('Failed to cleanup removed tab', error)
-    })
-})
-
-chrome.windows.onFocusChanged.addListener((windowId) => {
-  if (!autoCaptureEnabled) {
-    return
-  }
-
-  captureScheduler
-    .handleWindowFocusChanged(windowId)
-    .catch((error) => {
-      console.error('Failed to process window focus change', error)
-    })
-})
-
-chrome.webNavigation.onCommitted.addListener((details) => {
-  if (!autoCaptureEnabled) {
-    return
-  }
-
-  captureScheduler
-    .handleNavigationCommitted(details)
-    .catch((error) => {
-      console.error('Failed to process navigation commit', error)
-    })
-})
-
-chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
-  if (!autoCaptureEnabled) {
-    return
-  }
-
-  captureScheduler
-    .handleHistoryStateUpdated(details)
-    .catch((error) => {
-      console.error('Failed to process history state update', error)
-    })
-})
-
-chrome.webNavigation.onBeforeNavigate.addListener((details) => {
-  if (!autoCaptureEnabled) {
-    return
-  }
-
-  captureScheduler
-    .handleBeforeNavigate(details)
-    .catch((error) => {
-      console.error('Failed to process before navigate', error)
-    })
-})
-
 async function initializeAutoCapturePref() {
   try {
     const stored = await chrome.storage.local.get(AUTO_CAPTURE_PREF_KEY)
     const value = stored?.[AUTO_CAPTURE_PREF_KEY]
     autoCaptureEnabled = value !== false
+    captureScheduler.setAutoCaptureEnabled(autoCaptureEnabled)
   } catch (error) {
     console.error('Failed to read auto capture pref', error)
     autoCaptureEnabled = true
+    captureScheduler.setAutoCaptureEnabled(autoCaptureEnabled)
   }
 }
 
@@ -332,47 +276,3 @@ async function blobToDataUrl(blob: Blob) {
     reader.readAsDataURL(blob)
   })
 }
-
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (!message || message.type !== 'DEBUG_CAPTURE_ACTIVE') return
-
-  ;(async () => {
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
-      if (!tab || tab.id == null || tab.windowId == null || !tab.url) {
-        sendResponse({ ok: false, error: 'No active tab/window to capture' })
-        return
-      }
-
-      if (!/^https?:\/\//i.test(tab.url)) {
-        sendResponse({ ok: false, error: `Unsupported URL: ${tab.url}` })
-        return
-      }
-
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        chrome.tabs.captureVisibleTab(tab.windowId!, { format: 'jpeg', quality: 80 }, (res) => {
-          if (chrome.runtime.lastError || !res) {
-            reject(chrome.runtime.lastError ?? new Error('captureVisibleTab failed'))
-            return
-          }
-          resolve(res)
-        })
-      })
-
-      await thumbnailStore.putCapture({
-        tabId: tab.id!,
-        windowId: tab.windowId!,
-        url: tab.url,
-        kind: 'final',
-        dataUrl,
-      })
-
-      sendResponse({ ok: true })
-    } catch (err: any) {
-      console.error('DEBUG_CAPTURE_ACTIVE failed', err)
-      sendResponse({ ok: false, error: String(err?.message ?? err) })
-    }
-  })()
-
-  return true
-})

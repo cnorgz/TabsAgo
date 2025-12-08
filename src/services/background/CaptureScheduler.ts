@@ -39,6 +39,7 @@ export class CaptureScheduler {
   private windowCooldownUntil = new Map<number, number>()
   private errorLogTimestamps = new Map<string, number>()
   private captureHandler?: (metadata: CaptureMetadata) => Promise<void> | void
+  private autoCaptureEnabled = true
 
   async bootstrap() {
     try {
@@ -67,6 +68,10 @@ export class CaptureScheduler {
 
   setCaptureHandler(handler: (metadata: CaptureMetadata) => Promise<void> | void) {
     this.captureHandler = handler
+  }
+
+  setAutoCaptureEnabled(enabled: boolean) {
+    this.autoCaptureEnabled = enabled
   }
 
   async handleWindowFocusChanged(windowId: number) {
@@ -240,6 +245,7 @@ export class CaptureScheduler {
   }
 
   private enqueueCapture(request: CaptureRequest) {
+    if (!this.autoCaptureEnabled) return
     const exists = this.captureQueue.some((queued) => queued.tabId === request.tabId && queued.kind === request.kind)
     if (exists) return
     this.captureQueue.push(request)
@@ -311,7 +317,7 @@ export class CaptureScheduler {
       if (this.isTabCoolingDown(request.tabId)) {
         return false
       }
-      const dataUrl = await this.captureVisibleTab(request.windowId)
+      const dataUrl = await this.captureVisibleWithRetry(request.windowId, 80)
       const metadata: CaptureMetadata = {
         tabId: request.tabId,
         windowId: request.windowId,
@@ -322,6 +328,9 @@ export class CaptureScheduler {
       if (this.captureHandler) {
         await this.captureHandler(metadata)
       }
+      this.logInfoOnce(
+        `[CaptureScheduler] captured thumbnail for ${request.url} (tabId=${request.tabId}, windowId=${request.windowId})`,
+      )
       console.info('[CaptureScheduler]', request.kind, 'capture scheduled for', request.tabId, request.url)
       try {
         await chrome.runtime.sendMessage({
@@ -380,16 +389,29 @@ export class CaptureScheduler {
     return new Promise<void>((resolve) => setTimeout(resolve, ms))
   }
 
-  private captureVisibleTab(windowId: number) {
-    return new Promise<string>((resolve, reject) => {
-      chrome.tabs.captureVisibleTab(windowId, { format: 'jpeg', quality: 80 }, (dataUrl) => {
-        if (chrome.runtime.lastError || !dataUrl) {
-          reject(chrome.runtime.lastError ?? new Error('captureVisibleTab failed'))
-          return
+  private async captureVisibleWithRetry(windowId: number, quality: number, maxAttempts = 5): Promise<string> {
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          chrome.tabs.captureVisibleTab(windowId, { format: 'jpeg', quality }, (res) => {
+            if (chrome.runtime.lastError || !res) {
+              reject(chrome.runtime.lastError ?? new Error('captureVisibleTab failed'))
+              return
+            }
+            resolve(res)
+          })
+        })
+        return dataUrl
+      } catch (error: any) {
+        const message = typeof error?.message === 'string' ? error.message : String(error)
+        if (/Tabs cannot be edited right now \(user may be dragging a tab\)\./i.test(message) && attempt < maxAttempts - 1) {
+          await this.delay(50 * (attempt + 1))
+          continue
         }
-        resolve(dataUrl)
-      })
-    })
+        throw new Error(`captureVisibleTab failed${attempt > 0 ? ' after retries' : ''}: ${message}`)
+      }
+    }
+    throw new Error('captureVisibleTab failed after retries')
   }
 
   private isSupportedUrl(url: string) {
@@ -414,6 +436,11 @@ export class CaptureScheduler {
 
     // Always cool down this window on any capture error to avoid hot-looping.
     this.setWindowCooldown(windowId)
+
+    if (/after retries/i.test(message)) {
+      this.logInfoOnce(`[CaptureScheduler] giving up after retries for window ${windowId}: ${message}`)
+      return
+    }
 
     // Missing <all_urls>/activeTab permission:
     if (/permission is required/i.test(message) && /activeTab/i.test(message)) {
