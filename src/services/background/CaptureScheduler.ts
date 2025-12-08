@@ -81,23 +81,14 @@ export class CaptureScheduler {
       }
 
       // 2. Check freshness (Stateless check!)
-      // If we have a very recent capture, skip unless it's a "final" (forced update) or different URL
-      // Actually, even for 'final', we don't want to spam if we just captured 5 seconds ago.
       const lastRecord = await thumbnailStore.getLatestRecord(tabId, url)
       if (lastRecord) {
         const age = Date.now() - lastRecord.capturedAt
-        // If it's fresh enough (< 15 mins), skip.
-        // But if it's a 'first' capture attempt and we already have one from < 15 mins, skip.
         if (age < CAPTURE_COOLDOWN_MS) {
            return
         }
       }
 
-      // 3. Capture
-      // Ensure the window is focused or at least we can capture it. 
-      // captureVisibleTab works on the *active* tab of the *specified* window.
-      // We already checked tab.active above.
-      
       const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: 'jpeg', quality: QUALITY })
 
       const metadata: CaptureMetadata = {
@@ -116,10 +107,10 @@ export class CaptureScheduler {
       
     } catch (error: unknown) {
         // Common errors: "Tabs cannot be edited...", "The tab was closed", etc.
-        // We just ignore them.
         const msg = error instanceof Error ? error.message : String(error)
+        // Log errors that aren't expected interruptions
         if (!msg.includes('closed') && !msg.includes('drag')) {
-             console.debug('Capture failed', msg)
+             console.error(`[CaptureScheduler] Capture FAILED: ${msg}`)
         }
     }
   }

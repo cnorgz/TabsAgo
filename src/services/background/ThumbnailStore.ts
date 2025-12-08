@@ -22,10 +22,8 @@ export class ThumbnailStore {
 
   async putCapture(metadata: CaptureMetadata) {
     try {
-      console.log(`[ThumbnailStore] Saving capture for ${metadata.url} (Tab ${metadata.tabId})...`)
       const db = await this.ensureDb()
       const normalized = await this.normalizeImage(metadata.dataUrl)
-      console.log(`[ThumbnailStore] Image normalized. Size: ${normalized.width}x${normalized.height}`)
       
       const record: ThumbnailRecord = {
         tabId: metadata.tabId,
@@ -39,7 +37,6 @@ export class ThumbnailStore {
         capturedAt: Date.now(),
       }
       await this.storeRecord(db, record)
-      console.log(`[ThumbnailStore] Successfully stored record for ${metadata.url}`)
     } catch (error) {
       console.error('[ThumbnailStore] putCapture FAILED:', error)
     }
@@ -47,7 +44,6 @@ export class ThumbnailStore {
 
   async getLatest(tabId: number, url: string, limit = 2): Promise<ThumbnailRecord[]> {
     try {
-      console.log(`[ThumbnailStore] getLatest called for Tab ${tabId}, URL: ${url.substring(0, 50)}...`)
       if (!url) return [] // tabId can be 0 or -1, that's fine, we'll ignore it if needed
       
       const db = await this.ensureDb()
@@ -72,18 +68,8 @@ export class ThumbnailStore {
           // 1. If we have a valid tabId, prioritize exact match.
           // 2. If we don't have a valid tabId (e.g. 0), or if we just want *any* thumbnail for this URL,
           //    we accept it if the URL matches.
-          //    
-          // Actually, for a better UX: ALWAYS accept if URL matches.
-          // Why? Because if I reload a tab, its ID might stay same, but if I close/reopen, ID changes.
-          // The content (URL) is what matters for the thumbnail.
-          // The only risk is if two tabs have same URL but different content (dynamic app), 
-          // but arguably the most recent capture is still the best guess.
-
           if (value.url === url) {
-             // If we have a tabId, and it matches, that's a "perfect" match.
-             // If tabId mismatch, it's still a "good" match (maybe old session).
              results.push(value)
-             
              if (results.length >= limit) {
                resolve(results)
                return
@@ -95,7 +81,6 @@ export class ThumbnailStore {
         request.onerror = () => reject(request.error)
         tx.onerror = () => reject(tx.error)
       })
-      console.log(`[ThumbnailStore] getLatest returned ${items.length} items`)
       return items
     } catch (error) {
       console.error('[ThumbnailStore] getLatest FAILED:', error)
