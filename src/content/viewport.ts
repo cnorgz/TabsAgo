@@ -22,11 +22,15 @@ const getViewportPayload = () => {
   }
 }
 
-const sendMessage = (message: any, callback?: (response: any) => void) => {
+const sendMessage = (message: unknown, callback?: (response: unknown) => void) => {
   try {
-    chrome.runtime.sendMessage(message, callback)
+    if (callback) {
+      chrome.runtime.sendMessage(message, callback)
+    } else {
+      chrome.runtime.sendMessage(message)
+    }
   } catch (error) {
-    console.debug('viewport message failed', error)
+    console.error('viewport message failed', error)
   }
 }
 
@@ -39,12 +43,13 @@ const handleSave = () => {
 const handleRestoreRequest = () => {
   const url = getUrl()
   if (!url) return
-  sendMessage({ type: VPS_REQUEST, payload: { url } }, (response) => {
+  sendMessage({ type: VPS_REQUEST, payload: { url } }, (response: unknown) => {
     if (chrome.runtime.lastError || !response) {
       return
     }
-    if (response.type === VPS_RESTORE && response.payload) {
-      const { scrollX = 0, scrollY = 0 } = response.payload
+    const res = response as { type?: string; payload?: { scrollX?: number; scrollY?: number } }
+    if (res.type === VPS_RESTORE && res.payload) {
+      const { scrollX = 0, scrollY = 0 } = res.payload
       window.scrollTo({ left: scrollX, top: scrollY, behavior: 'auto' })
     }
   })

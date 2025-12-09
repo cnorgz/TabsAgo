@@ -32,14 +32,26 @@ async function openOrFocusAppTab(options: { pinned?: boolean; active?: boolean }
     }
     return
   }
-  await chrome.tabs.create({ url: appUrl, pinned: options.pinned ?? true, active: options.active ?? true })
+  await chrome.tabs.create({
+    url: appUrl,
+    pinned: options.pinned ?? true,
+    active: options.active ?? true,
+  })
 }
 
 chrome.runtime.onInstalled.addListener(() => {
   openOrFocusAppTab({ pinned: true, active: false })
   // Create context menu to send selected tabs to TabsAGO
-  try { chrome.contextMenus.removeAll() } catch { /* ignore */ }
-  chrome.contextMenus.create({ id: CONTEXT_MENU_IDS.sendSelected, title: 'Send highlighted tabs to TabsAGO', contexts: ['action', 'page'] })
+  try {
+    chrome.contextMenus.removeAll()
+  } catch {
+    /* ignore */
+  }
+  chrome.contextMenus.create({
+    id: CONTEXT_MENU_IDS.sendSelected,
+    title: 'Send highlighted tabs to TabsAGO',
+    contexts: ['action', 'page'],
+  })
 })
 
 // Ensure the pinned TabsAGO tab is present after a browser restart
@@ -82,23 +94,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return
   }
   if (message?.type === VPS_REQUEST) {
-    handleViewportRequest(message.payload, sender, sendResponse)
-      .catch((error) => {
-        console.error('Failed to handle viewport restore', error)
-        sendResponse({ type: VPS_RESTORE, payload: { scrollX: 0, scrollY: 0 } })
-      })
+    handleViewportRequest(message.payload, sender, sendResponse).catch((error) => {
+      console.error('Failed to handle viewport restore', error)
+      sendResponse({ type: VPS_RESTORE, payload: { scrollX: 0, scrollY: 0 } })
+    })
     return true
   }
   if (message?.type === THUMBS_GET_LATEST) {
-    handleThumbnailRequest(message.payload, sender, sendResponse)
-      .catch((error) => {
-        console.error('Failed to handle thumbnail request', error)
-        sendResponse({ type: THUMBS_GET_LATEST_OK, payload: { dataUrl: null } })
-      })
+    handleThumbnailRequest(message.payload, sender, sendResponse).catch((error) => {
+      console.error('Failed to handle thumbnail request', error)
+      sendResponse({ type: THUMBS_GET_LATEST_OK, payload: { dataUrl: null } })
+    })
     return true
   }
   if (message?.type === THUMBS_CLEAR_ALL) {
-    thumbnailStore.clearAll()
+    thumbnailStore
+      .clearAll()
       .then(() => sendResponse({ success: true }))
       .catch((error) => {
         console.error('Failed to clear thumbnails', error)
@@ -131,21 +142,20 @@ chrome.windows.onRemoved.addListener(async () => {
     // Check if auto-capture is enabled
     const autoCapture = await StorageService.get<boolean>(STORAGE_KEYS.autoCaptureOnClose)
     if (autoCapture === false) return // Skip if explicitly disabled
-    
+
     // Get all remaining windows
     const remainingWindows = await chrome.windows.getAll()
-    
+
     // If this was the last window, don't capture (browser is closing completely)
     if (remainingWindows.length === 0) return
-    
+
     const storedSnapshots = await StorageService.get<TabItem[]>(STORAGE_KEYS.tabSave)
     if (!storedSnapshots?.length) {
       return
     }
-    
+
     // TODO: Implement auto-capture by tracking tabs before window closes.
     // Placeholder intentionally left for future implementation tracked in docs/CODE_AUDIT.md.
-    
   } catch (error) {
     console.error('Failed to auto-capture tabs on window close:', error)
   }
@@ -169,19 +179,21 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     return
   }
 
-  captureScheduler
-    .handleTabUpdated(tabId, changeInfo, tab)
-    .catch((error) => {
-      console.error('Failed to process tab update', error)
-    })
+  captureScheduler.handleTabUpdated(tabId, changeInfo, tab).catch((error) => {
+    console.error('Failed to process tab update', error)
+  })
 })
 
 chrome.tabs.onActivated.addListener((activeInfo) => {
-  captureScheduler.handleTabActivated(activeInfo).catch((err) => console.error('onActivated error', err))
+  captureScheduler
+    .handleTabActivated(activeInfo)
+    .catch((err) => console.error('onActivated error', err))
 })
 
 chrome.windows.onFocusChanged.addListener((windowId) => {
-  captureScheduler.handleWindowFocusChanged(windowId).catch((err) => console.error('onFocusChanged error', err))
+  captureScheduler
+    .handleWindowFocusChanged(windowId)
+    .catch((err) => console.error('onFocusChanged error', err))
 })
 
 async function initializeAutoCapturePref() {
@@ -197,19 +209,30 @@ async function initializeAutoCapturePref() {
   }
 }
 
-async function handleViewportSave(payload: any, sender: chrome.runtime.MessageSender) {
+interface ViewportPayload {
+  url?: string
+  scrollX?: number
+  scrollY?: number
+  vw?: number
+  vh?: number
+  dpr?: number
+  ts?: number
+}
+
+async function handleViewportSave(payload: unknown, sender: chrome.runtime.MessageSender) {
   if (!autoCaptureEnabled) return
+  const p = payload as ViewportPayload
   const tabId = sender.tab?.id
-  const url = typeof payload?.url === 'string' ? payload.url : ''
+  const url = typeof p?.url === 'string' ? p.url : ''
   if (tabId == null || !url) return
   const key = getViewportKey(tabId, url)
   const data = {
-    scrollX: Number(payload?.scrollX) || 0,
-    scrollY: Number(payload?.scrollY) || 0,
-    vw: Number(payload?.vw) || 0,
-    vh: Number(payload?.vh) || 0,
-    dpr: Number(payload?.dpr) || 1,
-    ts: Number(payload?.ts) || Date.now(),
+    scrollX: Number(p?.scrollX) || 0,
+    scrollY: Number(p?.scrollY) || 0,
+    vw: Number(p?.vw) || 0,
+    vh: Number(p?.vh) || 0,
+    dpr: Number(p?.dpr) || 1,
+    ts: Number(p?.ts) || Date.now(),
   }
   try {
     await chrome.storage.session.set({ [key]: data })
@@ -219,17 +242,18 @@ async function handleViewportSave(payload: any, sender: chrome.runtime.MessageSe
 }
 
 async function handleViewportRequest(
-  payload: any,
+  payload: unknown,
   sender: chrome.runtime.MessageSender,
-  sendResponse: (response: any) => void,
+  sendResponse: (response: unknown) => void,
 ) {
   const defaultPayload = { scrollX: 0, scrollY: 0 }
   if (!autoCaptureEnabled) {
     sendResponse({ type: VPS_RESTORE, payload: defaultPayload })
     return
   }
+  const p = payload as ViewportPayload
   const tabId = sender.tab?.id
-  const url = typeof payload?.url === 'string' ? payload.url : ''
+  const url = typeof p?.url === 'string' ? p.url : ''
   if (tabId == null || !url) {
     sendResponse({ type: VPS_RESTORE, payload: defaultPayload })
     return
@@ -239,7 +263,10 @@ async function handleViewportRequest(
     const stored = await chrome.storage.session.get(key)
     const value = stored?.[key]
     if (value) {
-      sendResponse({ type: VPS_RESTORE, payload: { scrollX: value.scrollX ?? 0, scrollY: value.scrollY ?? 0 } })
+      sendResponse({
+        type: VPS_RESTORE,
+        payload: { scrollX: value.scrollX ?? 0, scrollY: value.scrollY ?? 0 },
+      })
       return
     }
   } catch (error) {
@@ -250,13 +277,19 @@ async function handleViewportRequest(
 
 const getViewportKey = (tabId: number, url: string) => `${VIEWPORT_KEY_PREFIX}:${tabId}:${url}`
 
+interface ThumbnailRequestPayload {
+  tabId?: number
+  url?: string
+}
+
 async function handleThumbnailRequest(
-  payload: any,
+  payload: unknown,
   _sender: chrome.runtime.MessageSender,
-  sendResponse: (response: any) => void,
+  sendResponse: (response: unknown) => void,
 ) {
-  const tabId = Number(payload?.tabId)
-  const url = typeof payload?.url === 'string' ? payload.url : ''
+  const p = payload as ThumbnailRequestPayload
+  const tabId = Number(p?.tabId)
+  const url = typeof p?.url === 'string' ? p.url : ''
   if (!Number.isFinite(tabId) || !url) {
     sendResponse({ type: THUMBS_GET_LATEST_OK, payload: { dataUrl: null } })
     return
@@ -286,7 +319,7 @@ async function blobToDataUrl(blob: Blob) {
         reject(new Error('Failed to read blob'))
       }
     }
-    reader.onerror = () => reject(reader.error)
+    reader.onerror = () => reject(reader.error || new Error('Unknown FileReader error'))
     reader.readAsDataURL(blob)
   })
 }

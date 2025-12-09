@@ -1,0 +1,20 @@
+---
+description: Performance guardrails for React and Chrome Extensions
+globs: src/**/*.{ts,tsx}
+---
+
+# Performance Guardrails
+
+Reference: `AGENTS.md`
+
+1.  **Stable Hooks:**
+    - NEVER pass inline objects/arrays `[]` `{} ` to `useEffect` dependencies.
+    - Use `useRef` for initial values or `useMemo`.
+
+2.  **Event Listeners:**
+    - DO NOT use `onMouseMove` or `onScroll` to update React state directly.
+    - Use refs or debounce/throttle.
+
+3.  **Chrome Storage:**
+    - Do not read from storage in a loop.
+    - Use `useChromeStorage` hook (which is now optimized).

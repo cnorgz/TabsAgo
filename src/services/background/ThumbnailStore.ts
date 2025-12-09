@@ -15,6 +15,7 @@ export class ThumbnailStore {
   private dbPromise: Promise<IDBDatabase> | null = null
   private migrationRan = false
   private cache = new Map<string, ThumbnailRecord>() // LRU cache: key is URL, value is ThumbnailRecord
+  private readonly CACHE_SIZE = 50 // Max number of items in LRU cache
 
   async initialize() {
     await this.ensureDb()
@@ -31,9 +32,11 @@ export class ThumbnailStore {
     this.cache.set(key, record)
 
     // Enforce size limit
-    if (this.cache.size > CACHE_SIZE) {
+    if (this.cache.size > this.CACHE_SIZE) {
       const oldestKey = this.cache.keys().next().value
-      this.cache.delete(oldestKey)
+      if (oldestKey) {
+        this.cache.delete(oldestKey)
+      }
     }
   }
 
@@ -41,7 +44,7 @@ export class ThumbnailStore {
     try {
       const db = await this.ensureDb()
       const normalized = await this.normalizeImage(metadata.dataUrl)
-      
+
       const record: ThumbnailRecord = {
         tabId: metadata.tabId,
         windowId: metadata.windowId,
@@ -63,12 +66,12 @@ export class ThumbnailStore {
   async getLatest(tabId: number, url: string, limit = 2): Promise<ThumbnailRecord[]> {
     try {
       if (!url) return []
-      
+
       // Try to get from cache first
       const cachedRecord = this.cache.get(url)
       if (cachedRecord) {
         // Move to end of LRU (most recently used)
-        this.addToCache(cachedRecord) 
+        this.addToCache(cachedRecord)
         return [cachedRecord]
       }
 
@@ -78,9 +81,9 @@ export class ThumbnailStore {
         const store = tx.objectStore(STORE_NAME)
         const index = store.index('capturedAt')
         const results: ThumbnailRecord[] = []
-        
+
         const request = index.openCursor(null, 'prev')
-        
+
         request.onsuccess = () => {
           const cursor = request.result
           if (!cursor) {
@@ -88,13 +91,13 @@ export class ThumbnailStore {
             return
           }
           const value = cursor.value as ThumbnailRecord
-          
+
           if (value.url === url) {
-             results.push(value)
-             if (results.length >= limit) {
-               resolve(results)
-               return
-             }
+            results.push(value)
+            if (results.length >= limit) {
+              resolve(results)
+              return
+            }
           }
           cursor.continue()
         }
@@ -246,7 +249,10 @@ export class ThumbnailStore {
           const ctx = canvas.getContext('2d')
           if (ctx) {
             ctx.drawImage(bitmap, 0, 0, target.width, target.height)
-            const scaledBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: TARGET_QUALITY })
+            const scaledBlob = await canvas.convertToBlob({
+              type: 'image/jpeg',
+              quality: TARGET_QUALITY,
+            })
             return { blob: scaledBlob, width: target.width, height: target.height, dpr: 1 }
           }
         }
