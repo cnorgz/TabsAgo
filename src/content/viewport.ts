@@ -29,8 +29,11 @@ const sendMessage = (message: unknown, callback?: (response: unknown) => void) =
     } else {
       chrome.runtime.sendMessage(message)
     }
-  } catch (error) {
-    console.error('viewport message failed', error)
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error)
+    if (!msg.includes('Extension context invalidated')) {
+      console.error('viewport message failed', error)
+    }
   }
 }
 
