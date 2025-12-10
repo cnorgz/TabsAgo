@@ -6,7 +6,10 @@ TabsAGO is a Chrome Extension (MV3) for organizing tabs.
 **Core:** `service-worker.ts` (background), `TabManager.tsx` (UI), `CaptureScheduler.ts` (logic).
 
 ## Hard rules (must follow)
-1.  **Architecture:**
+1.  **Documentation First:**
+    *   **Mandate:** For any Chrome API usage or architecture decision, **you must verify** against the [Official Chrome Extensions Documentation](https://developer.chrome.com/docs/extensions/).
+    *   **Goal:** Ensure strict Manifest V3 compliance and avoid deprecated patterns.
+2.  **Architecture:**
     *   **UI Components:** React only. No Chrome APIs (except via services/hooks).
     *   **Services:** Pure logic + Chrome APIs. No UI code.
 2.  **Performance (CRITICAL):**
