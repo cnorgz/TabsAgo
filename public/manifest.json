@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TabsAGO",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Organize multiple Chrome tabs into one manageable interface",
   "action": {
     "default_title": "TabsAGO",
