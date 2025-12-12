@@ -14,6 +14,7 @@
 Phase 2 Complete. Architecture is clean, thumbnails are stateless and performant.
 
 ### Recently Completed:
+- ✅ **Tooling & MCP:** Added bundle visualizer (`npm run analyze`), Chrome API mocking for tests, version sync script, and MCP playbook. (Dec 12, 2025)
 - ✅ **Thumbnail Capture Reliability:** Rebuilt as a stateless, non-invasive background process with URL fallback and 15m cooldown. (Dec 8, 2025)
 - ✅ **Performance Optimization:** Eliminated UI re-renders on mouse move; reduced background CPU usage. (Dec 8, 2025)
 - ✅ **No duplicate code:** Shared services layer implemented.

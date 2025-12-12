@@ -183,6 +183,11 @@ Related docs: PHASE2_SPEC.md (features/spec), ROUTINE_CHECKLISTS.md (workflow), 
     *   Session safety (lifeboat).
     *   Recently closed tabs.
     *   UI Polish (List/Tabs toggles, Pin button).
+4.  **Dev Tooling & MCP Setup** (Efficiency)
+    *   **Bundle Analysis**: Added `npm run analyze` for visual bundle size reports.
+    *   **Tests**: Added Chrome API mocking setup (`test/setup/chrome.ts`) and smoke tests.
+    *   **Versioning**: Added `npm run version:sync` to keep manifest.json and package.json in sync.
+    *   **MCP**: Added `docs/mcp-playbook.md` and configuration templates for Context7, GitHub, and Chrome DevTools MCPs.
 
 ### Next Phase: Phase 3 - View Modes & Organization
 Ready to begin implementing multiple view modes and organizational features.
