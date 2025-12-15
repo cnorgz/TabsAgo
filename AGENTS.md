@@ -42,6 +42,10 @@ TabsAGO is a Chrome Extension (MV3) for organizing tabs.
 1.  **Sanity Check:** Run `npm run sanity` (or lint/test) before committing.
 2.  **No Magic:** Do not assume dependencies exist.
 3.  **Docs First:** Update `docs/` if architecture changes.
+4.  **Git Workflow (CRITICAL):**
+    *   **Branches:** Always create a new branch for your task (e.g., `feature/xyz`, `fix/abc`).
+    *   **No Auto-Merge:** NEVER merge to `master` (or `main`) without explicit user validation.
+    *   **Handover:** When a task is done, commit to your branch and ask the user: "Ready to merge to master?" Do not assume yes.
 
 ## When in doubt
 Check `docs/IMPLEMENTATION_PLAN.md` or `docs/CODE_AUDIT.md`.

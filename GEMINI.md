@@ -55,3 +55,4 @@ Check `docs/IMPLEMENTATION_PLAN.md` or `docs/CODE_AUDIT.md`.
 - **Plan:** Use `/plan` style logic to break down complex tasks.
 - **Context:** If you lose context, read `docs/PROJECT_TRACKING.md`.
 - **Tools:** Prefer `search_file_content` over `run_shell_command("grep")`.
+- **Git Discipline:** NEVER merge to `master` without explicit user validation. Always work on a branch.

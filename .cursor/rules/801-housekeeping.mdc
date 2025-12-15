@@ -10,7 +10,8 @@ globs: **/*
 ## Requirements
 - Before coding: run type-check, lint, tests when relevant.
 - After significant edits: update docs (PROJECT_TRACKING.md, CODE_AUDIT.md) and summarize.
-- Commit regularly with concise messages; prompt user if repo push is desired.
+- Commit regularly with concise messages.
+- **Git Discipline:** NEVER merge to `master` without explicit user validation. Always work on a branch.
 - Periodically verify Chrome policy link in PHASE2_SPEC.md.
 - Ask for clarification on unclear specs (⭐) before implementing.
 - Ensure rules consistency with docs; do not ignore checklists.
