@@ -13,7 +13,7 @@ Copy the following JSON configuration into your Cursor MCP settings (Settings > 
   },
   "chrome-devtools": {
     "command": "npx",
-    "args": ["-y", "chrome-devtools-mcp", "@latest"]
+    "args": ["-y", "chrome-devtools-mcp@latest"]
   }
 }
 ```
