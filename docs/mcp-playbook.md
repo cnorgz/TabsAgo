@@ -36,6 +36,8 @@ Run the install commands found in `mcp/gemini-cli.md`.
 ### For Cursor
 Copy the JSON from `mcp/cursor.md` into Cursor's MCP settings panel.
 
+**💡 Pro Tip:** In Cursor features (Settings > Features > Docs), add `https://developer.chrome.com/docs/extensions/` as a new documentation source. This gives the AI direct access to the latest Chrome API references.
+
 ## 🗣️ 3-word MCP Triggers
 Agents are instructed NOT to use MCP tools unless you include one of these phrases:
 
